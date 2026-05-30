@@ -1,0 +1,8 @@
+.vercel
+.env
+node_modules
+__pycache__/
+*.pyc
+graphify-out/
+dist/
+.DS_Store
