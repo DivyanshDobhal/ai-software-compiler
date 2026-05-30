@@ -28,8 +28,9 @@ class GeminiService:
 
         primary_model = "gemini-2.5-flash"
         fallback_model = "gemini-2.5-pro"
-        
-        models_to_try = [primary_model, fallback_model]
+
+        # On Vercel, keep a single fast model to avoid 504 gateway timeouts.
+        models_to_try = [primary_model] if os.getenv("VERCEL") else [primary_model, fallback_model]
         headers = {
             "Content-Type": "application/json"
         }
@@ -58,14 +59,16 @@ class GeminiService:
             }
 
             # Retry loop for the current model
-            max_retries = 3
+            on_vercel = bool(os.getenv("VERCEL"))
+            max_retries = 1 if on_vercel else 3
             backoff_factor = 2.0
-            
+            request_timeout = 25 if on_vercel else 90
+
             for retry in range(max_retries):
                 t_start = time.time()
                 try:
                     logger.info(f"Dispatching query to model: {model} (Attempt {retry + 1}/{max_retries})")
-                    response = requests.post(url, headers=headers, json=payload, timeout=90)
+                    response = requests.post(url, headers=headers, json=payload, timeout=request_timeout)
                     response_time_ms = int((time.time() - t_start) * 1000)
 
                     # Self-healing config for responseMimeType in case of unexpected model constraints
@@ -74,7 +77,7 @@ class GeminiService:
                         if "generationConfig" in payload and "responseMimeType" in payload["generationConfig"]:
                             del payload["generationConfig"]["responseMimeType"]
                         t_start = time.time()
-                        response = requests.post(url, headers=headers, json=payload, timeout=90)
+                        response = requests.post(url, headers=headers, json=payload, timeout=request_timeout)
                         response_time_ms = int((time.time() - t_start) * 1000)
 
                     if response.status_code == 200:

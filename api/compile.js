@@ -7,8 +7,9 @@ import {
 import { findUserByToken } from "../src/auth-db.js";
 import { bearerToken } from "./auth.js";
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 45_000);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -19,6 +20,7 @@ export default async function handler(req, res) {
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
     const prompt = String(body.prompt || "").trim();
+    const compileMode = String(body.compileMode || "gemini").toLowerCase();
 
     if (!prompt) {
       return res.status(400).json({ error: "Prompt is required" });
@@ -29,10 +31,11 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Login is required to compile applications." });
     }
 
-    const customApiKey = body.geminiApiKey || req.headers["x-gemini-api-key"] || req.headers["X-Gemini-API-Key"] || "";
+    const customApiKey =
+      body.geminiApiKey || req.headers["x-gemini-api-key"] || req.headers["X-Gemini-API-Key"] || "";
 
-    const output = await compileWithGemini(prompt, customApiKey);
-    return res.status(200).json(output);
+    const output = await compilePrompt(prompt, customApiKey, compileMode);
+    return res.status(200).json(formatResponse(output));
   } catch (error) {
     return res.status(500).json({
       error: "Compilation failed",
@@ -41,9 +44,20 @@ export default async function handler(req, res) {
   }
 }
 
-async function compileWithGemini(prompt, customApiKey) {
+async function compilePrompt(prompt, customApiKey, compileMode) {
   const startedAt = Date.now();
   const deterministic = compileApplication(prompt, { injectFault: false });
+
+  if (compileMode === "local") {
+    return {
+      ...deterministic,
+      provider: {
+        mode: "deterministic",
+        model: "local-compiler"
+      }
+    };
+  }
+
   const apiKey = customApiKey || process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
@@ -83,13 +97,7 @@ async function compileWithGemini(prompt, customApiKey) {
       runtime,
       metrics: {
         latencyMs: Date.now() - startedAt,
-        stageTimings: [
-          { name: "Intent Extraction", ms: deterministic.metrics.stageTimings[0]?.ms || 0 },
-          { name: "System Design", ms: deterministic.metrics.stageTimings[1]?.ms || 0 },
-          { name: "Schema Generation", ms: Math.max(0, Date.now() - startedAt) },
-          { name: "Validation + Repair", ms: 0 },
-          { name: "Runtime Execution", ms: 0 }
-        ],
+        stageTimings: deterministic.metrics.stageTimings,
         retries: repair.applied.length,
         deterministic: false,
         costTier: "gemini-live"
@@ -135,7 +143,8 @@ async function requestGeminiBundle(prompt, seed, apiKey) {
         temperature: 0.1,
         responseMimeType: "application/json"
       }
-    })
+    }),
+    signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS)
   });
 
   if (!response.ok) {
@@ -147,6 +156,19 @@ async function requestGeminiBundle(prompt, seed, apiKey) {
   const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
   const parsed = parseJson(text);
   return normalizeBundle(parsed, seed);
+}
+
+function formatResponse(output) {
+  return {
+    ...output,
+    architecture: output.design,
+    status: "success",
+    validation: {
+      warnings: [],
+      ...output.validation,
+      errors: output.validation?.errors ?? []
+    }
+  };
 }
 
 function buildCompilerPrompt(prompt, seed) {
@@ -166,11 +188,15 @@ Hard requirements:
 - If requirements are vague or conflicting, document assumptions and ambiguities instead of failing.
 
 JSON shape example and deterministic seed:
-${JSON.stringify({
-  intent: seed.intent,
-  design: seed.design,
-  schemas: seed.schemas
-}, null, 2)}
+${JSON.stringify(
+  {
+    intent: seed.intent,
+    design: seed.design,
+    schemas: seed.schemas
+  },
+  null,
+  2
+)}
 
 User prompt:
 ${prompt}`;

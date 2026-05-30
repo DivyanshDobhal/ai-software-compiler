@@ -698,25 +698,25 @@ function Dashboard({ user, token, onLogout }) {
         ...(compileMode === "gemini" && geminiApiKey ? { "X-Gemini-API-Key": geminiApiKey } : {})
       };
 
-      const data = await apiRequest("/api/generate", {
+      const data = await apiRequest("/api/compile", {
         method: "POST",
         token,
         headers,
-        body: JSON.stringify({ prompt, geminiApiKey: compileMode === "gemini" ? geminiApiKey : "" })
+        body: JSON.stringify({
+          prompt,
+          compileMode,
+          geminiApiKey: compileMode === "gemini" ? geminiApiKey : ""
+        })
       });
-      window.setTimeout(() => {
-        setOutput(data);
-        setCompilationProgress(100);
-        setCurrentCompileTask("Compilation Successful");
-        setCompiling(false);
-      }, 4500);
+      setOutput(data);
+      setCompilationProgress(100);
+      setCurrentCompileTask("Compilation Successful");
+      setCompiling(false);
     } catch (nextError) {
-      window.setTimeout(() => {
-        setError(nextError instanceof Error ? nextError.message : "Compilation failed.");
-        setCompilationProgress(0);
-        setCurrentCompileTask("System Failure");
-        setCompiling(false);
-      }, 4500);
+      setError(nextError instanceof Error ? nextError.message : "Compilation failed.");
+      setCompilationProgress(0);
+      setCurrentCompileTask("System Failure");
+      setCompiling(false);
     }
   }
 
@@ -2792,7 +2792,14 @@ async function apiRequest(path, options = {}) {
     }
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || data.detail || `Request failed with ${response.status}`);
+  if (!response.ok) {
+    if (response.status === 504) {
+      throw new Error(
+        "Compilation timed out. Open Settings → Local Compiler for instant results, or use a shorter prompt."
+      );
+    }
+    throw new Error(data.error || data.detail || `Request failed with ${response.status}`);
+  }
   return data;
 }
 
