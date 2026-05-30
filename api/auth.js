@@ -1,5 +1,6 @@
 import {
   createSessionToken,
+  findOrCreateOAuthUser,
   findUserByToken,
   getAuthDb,
   hashPassword,
@@ -7,12 +8,31 @@ import {
   publicUser,
   verifyPassword
 } from "../src/auth-db.js";
+import {
+  buildFrontendErrorRedirect,
+  buildFrontendSuccessRedirect,
+  buildGitHubAuthUrl,
+  buildGoogleAuthUrl,
+  exchangeGitHubCode,
+  exchangeGoogleCode,
+  verifyOAuthState
+} from "../src/oauth.js";
 
 export default async function handler(req, res) {
   const url = new URL(req.url || "/api/auth", "http://localhost");
-  const action = url.pathname.split("/").pop();
+  const segments = url.pathname.replace(/^\/api\/auth\/?/, "").split("/").filter(Boolean);
+  const [action, subaction] = segments;
 
   try {
+    if (req.method === "GET" && action === "google" && !subaction) return startOAuth(res, "google");
+    if (req.method === "GET" && action === "google" && subaction === "callback") {
+      return finishOAuth(req, res, "google");
+    }
+    if (req.method === "GET" && action === "github" && !subaction) return startOAuth(res, "github");
+    if (req.method === "GET" && action === "github" && subaction === "callback") {
+      return finishOAuth(req, res, "github");
+    }
+
     if (req.method === "POST" && action === "register") return register(req, res);
     if (req.method === "POST" && action === "login") return login(req, res);
     if (req.method === "GET" && action === "me") return me(req, res);
@@ -24,6 +44,47 @@ export default async function handler(req, res) {
     const message = error instanceof Error ? error.message : "Unknown error";
     const status = message.includes("MONGODB_URI") || message.includes("MONGO_URL") ? 503 : 500;
     return res.status(status).json({ error: "Auth request failed", detail: message });
+  }
+}
+
+function startOAuth(res, provider) {
+  try {
+    const authUrl = provider === "google" ? buildGoogleAuthUrl() : buildGitHubAuthUrl();
+    res.writeHead(302, { Location: authUrl });
+    res.end();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "OAuth is not configured.";
+    res.writeHead(302, { Location: buildFrontendErrorRedirect(message) });
+    res.end();
+  }
+}
+
+async function finishOAuth(req, res, provider) {
+  const url = new URL(req.url || `/api/auth/${provider}/callback`, "http://localhost");
+  const error = url.searchParams.get("error");
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+
+  if (error) {
+    res.writeHead(302, { Location: buildFrontendErrorRedirect(`Sign-in cancelled: ${error}`) });
+    return res.end();
+  }
+
+  if (!code || !verifyOAuthState(state, provider)) {
+    res.writeHead(302, { Location: buildFrontendErrorRedirect("Invalid OAuth state. Please try again.") });
+    return res.end();
+  }
+
+  try {
+    const profile =
+      provider === "google" ? await exchangeGoogleCode(code) : await exchangeGitHubCode(code);
+    const session = await findOrCreateOAuthUser(profile);
+    res.writeHead(302, { Location: buildFrontendSuccessRedirect(session.token) });
+    res.end();
+  } catch (oauthError) {
+    const message = oauthError instanceof Error ? oauthError.message : "OAuth sign-in failed.";
+    res.writeHead(302, { Location: buildFrontendErrorRedirect(message) });
+    res.end();
   }
 }
 
@@ -47,6 +108,7 @@ async function register(req, res) {
       email,
       passwordHash: hashPassword(password),
       role: "member",
+      providers: [{ provider: "email", providerId: email }],
       sessions: [{ tokenHash: session.tokenHash, createdAt: now, expiresAt: session.expiresAt }],
       createdAt: now,
       updatedAt: now
@@ -76,7 +138,14 @@ async function login(req, res) {
   const db = await getAuthDb();
   const user = await db.collection("users").findOne({ email });
 
-  if (!user || !verifyPassword(password, user.passwordHash)) {
+  if (!user || !user.passwordHash || !verifyPassword(password, user.passwordHash)) {
+    if (user && !user.passwordHash) {
+      const providers = (user.providers || []).map((entry) => entry.provider).filter((p) => p !== "email");
+      const hint = providers.length
+        ? `Use ${providers.join(" or ")} sign-in for this account.`
+        : "Use social sign-in for this account.";
+      return res.status(401).json({ error: `Invalid email or password. ${hint}` });
+    }
     return res.status(401).json({ error: "Invalid email or password." });
   }
 
@@ -93,7 +162,7 @@ async function login(req, res) {
 }
 
 async function me(req, res) {
-  const user = await authenticate(req);
+  const user = await findUserByToken(bearerToken(req));
   if (!user) return res.status(401).json({ error: "Not authenticated." });
   return res.status(200).json({ user: publicUser(user) });
 }
@@ -109,10 +178,6 @@ async function logout(req, res) {
   }
 
   return res.status(200).json({ ok: true });
-}
-
-async function authenticate(req) {
-  return findUserByToken(bearerToken(req));
 }
 
 export function bearerToken(req) {

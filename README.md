@@ -30,9 +30,20 @@ In the Vercel project → **Settings → Environment Variables**, add:
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
+| `APP_URL` | Yes (for OAuth) | Production URL, e.g. `https://ai-software-compiler-seven.vercel.app` |
 | `MONGODB_URI` | Yes (for auth) | MongoDB Atlas connection string |
 | `GEMINI_API_KEY` | Yes (for AI generation) | Google Gemini API key |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | For Google sign-in | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | For GitHub sign-in | [GitHub Developer Settings](https://github.com/settings/developers) |
+| `OAUTH_STATE_SECRET` | Recommended | Random string used to sign OAuth state |
 | `AUTH_TOKEN_TTL_DAYS` | No | Session lifetime (default: 7) |
+
+### OAuth redirect URLs
+
+Register these callback URLs in Google and GitHub:
+
+- `https://<your-domain>/api/auth/google/callback`
+- `https://<your-domain>/api/auth/github/callback`
 
 Redeploy after adding variables.
 

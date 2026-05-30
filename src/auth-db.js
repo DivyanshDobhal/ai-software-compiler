@@ -58,8 +58,75 @@ export function publicUser(user) {
     name: user.name,
     email: user.email,
     role: user.role || "member",
+    avatarUrl: user.avatarUrl || null,
+    providers: (user.providers || []).map((entry) => entry.provider),
     createdAt: user.createdAt
   };
+}
+
+export async function issueSessionForUser(user) {
+  const session = createSessionToken();
+  const db = await getAuthDb();
+  const now = new Date();
+
+  await db.collection("users").updateOne(
+    { _id: user._id },
+    {
+      $push: {
+        sessions: { tokenHash: session.tokenHash, createdAt: now, expiresAt: session.expiresAt }
+      },
+      $set: { updatedAt: now }
+    }
+  );
+
+  const fresh = await db.collection("users").findOne({ _id: user._id });
+  return { token: session.token, user: publicUser(fresh) };
+}
+
+export async function findOrCreateOAuthUser({ provider, providerId, email, name, avatarUrl }) {
+  const db = await getAuthDb();
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+
+  let user = await db.collection("users").findOne({
+    $or: [{ email: normalizedEmail }, { providers: { $elemMatch: { provider, providerId } } }]
+  });
+
+  if (user) {
+    const hasProvider = (user.providers || []).some(
+      (entry) => entry.provider === provider && entry.providerId === providerId
+    );
+    const updateDoc = { $set: { updatedAt: new Date() } };
+
+    if (!hasProvider) {
+      updateDoc.$addToSet = { providers: { provider, providerId } };
+    }
+    if (avatarUrl && !user.avatarUrl) {
+      updateDoc.$set.avatarUrl = avatarUrl;
+    }
+
+    if (!hasProvider || (avatarUrl && !user.avatarUrl)) {
+      await db.collection("users").updateOne({ _id: user._id }, updateDoc);
+      user = await db.collection("users").findOne({ _id: user._id });
+    }
+
+    return issueSessionForUser(user);
+  }
+
+  const session = createSessionToken();
+  const now = new Date();
+  const result = await db.collection("users").insertOne({
+    name: String(name || normalizedEmail.split("@")[0]).slice(0, 80),
+    email: normalizedEmail,
+    role: "member",
+    providers: [{ provider, providerId }],
+    avatarUrl: avatarUrl || null,
+    sessions: [{ tokenHash: session.tokenHash, createdAt: now, expiresAt: session.expiresAt }],
+    createdAt: now,
+    updatedAt: now
+  });
+
+  const created = await db.collection("users").findOne({ _id: result.insertedId });
+  return { token: session.token, user: publicUser(created) };
 }
 
 export async function findUserByToken(token) {
@@ -84,6 +151,7 @@ function tokenExpiry() {
 async function ensureIndexes(db) {
   await db.collection("users").createIndex({ email: 1 }, { unique: true });
   await db.collection("users").createIndex({ "sessions.tokenHash": 1 });
+  await db.collection("users").createIndex({ "providers.provider": 1, "providers.providerId": 1 });
 }
 
 function databaseNameFromUri(uri) {
