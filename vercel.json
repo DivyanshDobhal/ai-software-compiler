@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install",
@@ -14,25 +15,18 @@
       "maxDuration": 30
     }
   },
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/auth/(.*)",
-      "dest": "/api/auth"
+      "source": "/api/auth/(.*)",
+      "destination": "/api/auth"
     },
     {
-      "src": "/health/llm",
-      "dest": "/api/generate"
+      "source": "/health/llm",
+      "destination": "/api/generate"
     },
     {
-      "src": "/api/health/llm",
-      "dest": "/api/generate"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/api/health/llm",
+      "destination": "/api/generate"
     }
   ]
 }
