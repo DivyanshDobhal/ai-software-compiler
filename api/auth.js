@@ -24,11 +24,11 @@ export default async function handler(req, res) {
   const [action, subaction] = segments;
 
   try {
-    if (req.method === "GET" && action === "google" && !subaction) return startOAuth(res, "google");
+    if (req.method === "GET" && action === "google" && !subaction) return startOAuth(req, res, "google");
     if (req.method === "GET" && action === "google" && subaction === "callback") {
       return finishOAuth(req, res, "google");
     }
-    if (req.method === "GET" && action === "github" && !subaction) return startOAuth(res, "github");
+    if (req.method === "GET" && action === "github" && !subaction) return startOAuth(req, res, "github");
     if (req.method === "GET" && action === "github" && subaction === "callback") {
       return finishOAuth(req, res, "github");
     }
@@ -47,14 +47,14 @@ export default async function handler(req, res) {
   }
 }
 
-function startOAuth(res, provider) {
+function startOAuth(req, res, provider) {
   try {
-    const authUrl = provider === "google" ? buildGoogleAuthUrl() : buildGitHubAuthUrl();
+    const authUrl = provider === "google" ? buildGoogleAuthUrl(req) : buildGitHubAuthUrl(req);
     res.writeHead(302, { Location: authUrl });
     res.end();
   } catch (error) {
     const message = error instanceof Error ? error.message : "OAuth is not configured.";
-    res.writeHead(302, { Location: buildFrontendErrorRedirect(message) });
+    res.writeHead(302, { Location: buildFrontendErrorRedirect(message, req) });
     res.end();
   }
 }
@@ -64,26 +64,29 @@ async function finishOAuth(req, res, provider) {
   const error = url.searchParams.get("error");
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
+  const statePayload = verifyOAuthState(state, provider);
 
   if (error) {
-    res.writeHead(302, { Location: buildFrontendErrorRedirect(`Sign-in cancelled: ${error}`) });
+    res.writeHead(302, { Location: buildFrontendErrorRedirect(`Sign-in cancelled: ${error}`, req) });
     return res.end();
   }
 
-  if (!code || !verifyOAuthState(state, provider)) {
-    res.writeHead(302, { Location: buildFrontendErrorRedirect("Invalid OAuth state. Please try again.") });
+  if (!code || !statePayload?.redirectUri) {
+    res.writeHead(302, { Location: buildFrontendErrorRedirect("Invalid OAuth state. Please try again.", req) });
     return res.end();
   }
 
   try {
     const profile =
-      provider === "google" ? await exchangeGoogleCode(code) : await exchangeGitHubCode(code);
+      provider === "google"
+        ? await exchangeGoogleCode(code, statePayload.redirectUri)
+        : await exchangeGitHubCode(code, statePayload.redirectUri);
     const session = await findOrCreateOAuthUser(profile);
-    res.writeHead(302, { Location: buildFrontendSuccessRedirect(session.token) });
+    res.writeHead(302, { Location: buildFrontendSuccessRedirect(session.token, req) });
     res.end();
   } catch (oauthError) {
     const message = oauthError instanceof Error ? oauthError.message : "OAuth sign-in failed.";
-    res.writeHead(302, { Location: buildFrontendErrorRedirect(message) });
+    res.writeHead(302, { Location: buildFrontendErrorRedirect(message, req) });
     res.end();
   }
 }

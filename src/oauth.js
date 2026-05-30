@@ -14,16 +14,29 @@ const GITHUB_EMAILS_URL = "https://api.github.com/user/emails";
 
 export function getAppBaseUrl() {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return "http://localhost:5173";
 }
 
-export function oauthCallbackUrl(provider) {
-  return `${getAppBaseUrl()}/api/auth/${provider}/callback`;
+/** Use the hostname the user actually visited (fixes Vercel deployment URL mismatch). */
+export function getRequestBaseUrl(req) {
+  const forwardedHost = req?.headers?.["x-forwarded-host"];
+  const hostHeader = forwardedHost || req?.headers?.host;
+  const proto = String(req?.headers?.["x-forwarded-proto"] || "https")
+    .split(",")[0]
+    .trim();
+
+  if (hostHeader) {
+    const host = String(hostHeader).split(",")[0].trim();
+    if (host && !host.startsWith("localhost")) {
+      return `${proto}://${host}`.replace(/\/$/, "");
+    }
+  }
+
+  return getAppBaseUrl();
 }
 
-export function oauthRedirectUri(provider) {
-  return oauthCallbackUrl(provider);
+export function oauthRedirectUri(provider, req) {
+  return `${getRequestBaseUrl(req)}/api/auth/${provider}/callback`;
 }
 
 function stateSecret() {
@@ -35,9 +48,10 @@ function stateSecret() {
   );
 }
 
-export function createOAuthState(provider) {
+export function createOAuthState(provider, redirectUri) {
   const payload = JSON.stringify({
     provider,
+    redirectUri,
     nonce: randomBytes(16).toString("hex"),
     ts: Date.now()
   });
@@ -47,63 +61,67 @@ export function createOAuthState(provider) {
 }
 
 export function verifyOAuthState(state, expectedProvider) {
-  if (!state || typeof state !== "string") return false;
+  if (!state || typeof state !== "string") return null;
 
   const [encoded, signature] = state.split(".");
-  if (!encoded || !signature) return false;
+  if (!encoded || !signature) return null;
 
   let payload;
   try {
     payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
   } catch {
-    return false;
+    return null;
   }
 
   const expectedSig = createHmac("sha256", stateSecret()).update(JSON.stringify(payload)).digest("hex");
   const sigBuffer = Buffer.from(signature, "hex");
   const expectedBuffer = Buffer.from(expectedSig, "hex");
   if (sigBuffer.length !== expectedBuffer.length || !timingSafeEqual(sigBuffer, expectedBuffer)) {
-    return false;
+    return null;
   }
 
-  if (payload.provider !== expectedProvider) return false;
-  if (Date.now() - payload.ts > 10 * 60 * 1000) return false;
+  if (payload.provider !== expectedProvider) return null;
+  if (Date.now() - payload.ts > 10 * 60 * 1000) return null;
 
-  return true;
+  return { redirectUri: payload.redirectUri };
 }
 
-export function buildGoogleAuthUrl() {
+export function buildGoogleAuthUrl(req) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   if (!clientId) throw new Error("GOOGLE_CLIENT_ID is not configured.");
 
+  const redirectUri = oauthRedirectUri("google", req);
+
   const params = new URLSearchParams({
     client_id: clientId,
-    redirect_uri: oauthRedirectUri("google"),
+    redirect_uri: redirectUri,
     response_type: "code",
     scope: "openid email profile",
     access_type: "online",
     prompt: "select_account",
-    state: createOAuthState("google")
+    state: createOAuthState("google", redirectUri)
   });
 
   return `${GOOGLE_AUTH_URL}?${params.toString()}`;
 }
 
-export function buildGitHubAuthUrl() {
+export function buildGitHubAuthUrl(req) {
   const clientId = process.env.GITHUB_CLIENT_ID;
   if (!clientId) throw new Error("GITHUB_CLIENT_ID is not configured.");
 
+  const redirectUri = oauthRedirectUri("github", req);
+
   const params = new URLSearchParams({
     client_id: clientId,
-    redirect_uri: oauthRedirectUri("github"),
+    redirect_uri: redirectUri,
     scope: "user:email",
-    state: createOAuthState("github")
+    state: createOAuthState("github", redirectUri)
   });
 
   return `${GITHUB_AUTH_URL}?${params.toString()}`;
 }
 
-export async function exchangeGoogleCode(code) {
+export async function exchangeGoogleCode(code, redirectUri) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
@@ -117,7 +135,7 @@ export async function exchangeGoogleCode(code) {
       code,
       client_id: clientId,
       client_secret: clientSecret,
-      redirect_uri: oauthRedirectUri("google"),
+      redirect_uri: redirectUri,
       grant_type: "authorization_code"
     })
   });
@@ -144,7 +162,7 @@ export async function exchangeGoogleCode(code) {
   };
 }
 
-export async function exchangeGitHubCode(code) {
+export async function exchangeGitHubCode(code, redirectUri) {
   const clientId = process.env.GITHUB_CLIENT_ID;
   const clientSecret = process.env.GITHUB_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
@@ -161,7 +179,7 @@ export async function exchangeGitHubCode(code) {
       code,
       client_id: clientId,
       client_secret: clientSecret,
-      redirect_uri: oauthRedirectUri("github")
+      redirect_uri: redirectUri
     })
   });
 
@@ -206,14 +224,14 @@ export async function exchangeGitHubCode(code) {
   };
 }
 
-export function buildFrontendSuccessRedirect(token) {
-  const base = getAppBaseUrl();
+export function buildFrontendSuccessRedirect(token, req) {
+  const base = getRequestBaseUrl(req);
   const params = new URLSearchParams({ auth_token: token });
   return `${base}/?${params.toString()}`;
 }
 
-export function buildFrontendErrorRedirect(message) {
-  const base = getAppBaseUrl();
+export function buildFrontendErrorRedirect(message, req) {
+  const base = req ? getRequestBaseUrl(req) : getAppBaseUrl();
   const params = new URLSearchParams({ auth_error: message });
   return `${base}/?${params.toString()}`;
 }
