@@ -5,8 +5,7 @@
   "installCommand": "npm install",
   "functions": {
     "api/generate.py": {
-      "maxDuration": 60,
-      "memory": 1024
+      "maxDuration": 60
     },
     "api/compile.js": {
       "maxDuration": 60
@@ -15,22 +14,25 @@
       "maxDuration": 30
     }
   },
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/auth/(.*)",
-      "destination": "/api/auth"
+      "src": "/api/auth/(.*)",
+      "dest": "/api/auth"
     },
     {
-      "source": "/health/llm",
-      "destination": "/api/generate"
+      "src": "/health/llm",
+      "dest": "/api/generate"
     },
     {
-      "source": "/api/health/llm",
-      "destination": "/api/generate"
+      "src": "/api/health/llm",
+      "dest": "/api/generate"
     },
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
