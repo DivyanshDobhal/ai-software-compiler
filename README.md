@@ -14,15 +14,33 @@ This project is a compact compiler-style system for software generation. It is i
 - Evaluation framework with 20 test prompts and metrics
 - Browser UI for entering new prompts and inspecting JSON output
 
-## Run Locally
+## Deploy on Vercel (production)
 
-```bash
-npm start
-```
+This app is built for [Vercel](https://vercel.com) only. The frontend is a static Vite build; APIs run as serverless functions (`api/auth.js`, `api/compile.js`, `api/generate.py`).
 
-Open `http://localhost:5173`.
+### 1. Connect GitHub
 
-Run the evaluation suite:
+1. Push the repo to [github.com/DivyanshDobhal/ai-software-compiler](https://github.com/DivyanshDobhal/ai-software-compiler).
+2. In the [Vercel dashboard](https://vercel.com/new), choose **Import Git Repository** and select that repo.
+3. Vercel will detect `vercel.json` — leave **Build Command** as `npm run build` and **Output Directory** as `dist`.
+
+### 2. Environment variables
+
+In the Vercel project → **Settings → Environment Variables**, add:
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `MONGODB_URI` | Yes (for auth) | MongoDB Atlas connection string |
+| `GEMINI_API_KEY` | Yes (for AI generation) | Google Gemini API key |
+| `AUTH_TOKEN_TTL_DAYS` | No | Session lifetime (default: 7) |
+
+Redeploy after adding variables.
+
+### 3. Deploy
+
+Every push to `main` triggers a production deployment. The live URL will look like `https://ai-software-compiler.vercel.app`.
+
+Run the offline evaluation suite (no server required):
 
 ```bash
 npm test

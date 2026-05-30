@@ -1,7 +1,7 @@
-import sys
 import os
+import sys
 
-# Add root folder to python path to ensure services and routes modules are found
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add root folder to python path so services/ and routes/ resolve on Vercel.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main import app
+from main import app  # noqa: E402 — Vercel ASGI entrypoint

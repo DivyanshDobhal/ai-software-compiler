@@ -29,6 +29,10 @@ app.include_router(generate_router, prefix="/api", tags=["Generate (API)"])
 
 @app.on_event("startup")
 def startup_verification():
+    if os.getenv("VERCEL"):
+        logger.info("Running on Vercel — skipping local startup verification.")
+        return
+
     logger.info("==================================================")
     logger.info("Initializing Startup Verification Tests for Gemini Integration...")
     

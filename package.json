@@ -4,11 +4,7 @@
   "description": "Natural language to validated executable app configuration compiler demo.",
   "type": "module",
   "scripts": {
-    "api": "PORT=5174 node server.js",
-    "dev": "vite --host 0.0.0.0",
-    "start": "concurrently \"npm run api\" \"npm run dev\"",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0",
     "test": "node tests/run-evaluation.js"
   },
   "keywords": [
@@ -23,7 +19,6 @@
     "@tailwindcss/vite": "^4.3.0",
     "@vitejs/plugin-react": "^6.0.2",
     "autoprefixer": "^10.5.0",
-    "concurrently": "^10.0.0",
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.17.0",
     "mongodb": "^7.2.0",
