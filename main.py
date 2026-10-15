@@ -10,7 +10,7 @@ logger = logging.getLogger("main")
 
 app = FastAPI(
     title="AI Compiler Studio Backend",
-    description="FastAPI-based multi-agent compiler backend utilizing Google Gemini API",
+    description="FastAPI-based multi-agent compiler backend utilizing NVIDIA NIM",
     version="1.0.0"
 )
 
@@ -33,65 +33,30 @@ def startup_verification():
         logger.info("Running on Vercel — skipping local startup verification.")
         return
 
-    logger.info("==================================================")
-    logger.info("Initializing Startup Verification Tests for Gemini Integration...")
-    
-    # 1. Verify API Key exists
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        logger.error("Startup Verification Failure: GEMINI_API_KEY is not configured in .env!")
-        logger.info("==================================================")
+    logger.info("Initializing startup verification for NVIDIA NIM integration.")
+    if not os.getenv("NVIDIA_API_KEY"):
+        logger.error("NVIDIA_API_KEY is not configured in .env.")
         return
-    logger.info("Startup Verification: GEMINI_API_KEY detected in environment.")
 
-    # 2. Verify Gemini connection and selected models exist
-    from services.gemini_service import GeminiService
-    
-    logger.info("Testing connection to primary model: gemini-2.5-flash...")
-    flash_ok = GeminiService.test_connection("gemini-2.5-flash")
-    if flash_ok:
-        logger.info("Startup Verification Success: gemini-2.5-flash is ONLINE and responsive.")
+    from services.nvidia_service import NvidiaService
+    model = os.getenv("NVIDIA_MODEL", NvidiaService.MODEL)
+    if NvidiaService.test_connection(model):
+        logger.info("NVIDIA model %s is online and responsive.", model)
     else:
-        logger.error("Startup Verification Failure: gemini-2.5-flash is OFFLINE or unsupported!")
+        logger.error("NVIDIA model %s is offline or unsupported.", model)
 
-    logger.info("Testing connection to fallback model: gemini-2.5-pro...")
-    pro_ok = GeminiService.test_connection("gemini-2.5-pro")
-    if pro_ok:
-        logger.info("Startup Verification Success: gemini-2.5-pro is ONLINE and responsive.")
-    else:
-        logger.error("Startup Verification Failure: gemini-2.5-pro is OFFLINE or unsupported!")
-        
-    logger.info("==================================================")
 
 @app.get("/health/llm")
 def health_llm():
-    """
-    Dynamically tests the connectivity to the Gemini models and reports back availability.
-    """
-    from services.gemini_service import GeminiService
-    
-    # First test primary model
-    if GeminiService.test_connection("gemini-2.5-flash"):
-        return {
-            "provider": "Gemini",
-            "model": "gemini-2.5-flash",
-            "status": "online"
-        }
-    
-    # Fallback status report
-    if GeminiService.test_connection("gemini-2.5-pro"):
-        return {
-            "provider": "Gemini",
-            "model": "gemini-2.5-pro",
-            "status": "online"
-        }
-        
-    return {
-        "provider": "Gemini",
-        "model": "gemini-2.5-flash",
-        "status": "offline",
-        "error": "All Gemini models are offline"
-    }
+    """Check connectivity to the configured NVIDIA NIM model."""
+    from services.nvidia_service import NvidiaService
+
+    model = os.getenv("NVIDIA_MODEL", NvidiaService.MODEL)
+    online = NvidiaService.test_connection(model)
+    result = {"provider": "NVIDIA", "model": model, "status": "online" if online else "offline"}
+    if not online:
+        result["error"] = "NVIDIA model is unavailable or NVIDIA_API_KEY is not configured"
+    return result
 
 @app.get("/")
 def read_root():

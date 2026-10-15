@@ -1,7 +1,7 @@
 import json
 import re
 import logging
-from services.gemini_service import GeminiService
+from services.nvidia_service import NvidiaService
 
 logger = logging.getLogger("RepairAgent")
 
@@ -9,9 +9,9 @@ class RepairAgent:
     @staticmethod
     def _call_and_parse(prompt: str) -> dict:
         """
-        Calls GeminiService.generate and robustly extracts and parses JSON from the response.
+        Calls NvidiaService.generate and robustly extracts and parses JSON from the response.
         """
-        response_text = GeminiService.generate(prompt)
+        response_text = NvidiaService.generate(prompt)
         try:
             return json.loads(response_text)
         except json.JSONDecodeError:
@@ -22,7 +22,7 @@ class RepairAgent:
                     return json.loads(match.group(0))
                 except json.JSONDecodeError as e:
                     raise ValueError(f"Regex found a JSON candidate but failed to parse: {str(e)}")
-            raise ValueError(f"Failed to parse valid JSON from Gemini output: {response_text[:300]}")
+            raise ValueError(f"Failed to parse valid JSON from NVIDIA output: {response_text[:300]}")
 
     @staticmethod
     def repair(bundle: dict, validation_results: dict) -> dict:

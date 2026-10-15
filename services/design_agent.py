@@ -1,6 +1,6 @@
 import json
 import re
-from services.gemini_service import GeminiService
+from services.nvidia_service import NvidiaService
 
 class DesignAgent:
     @staticmethod
@@ -71,7 +71,7 @@ Hard Constraints:
 3. Keep the relationship references strictly matching exact existing table.column fields.
 4. "access_control" must cover every role specified in the input Intent JSON (including 'admin').
 """
-        response_text = GeminiService.generate(system_prompt)
+        response_text = NvidiaService.generate(system_prompt)
         try:
             return json.loads(response_text)
         except json.JSONDecodeError:

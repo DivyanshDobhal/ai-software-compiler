@@ -283,7 +283,7 @@ function App() {
                     AI COMPILER STUDIO
                   </h1>
                   <p className="text-slate-400 text-xs font-mono uppercase tracking-widest leading-relaxed">
-                    Compile natural language ideas into type-safe server networks and database blueprints. Immersive sandboxed runtimes powered by Gemini core plane.
+                    Compile natural language ideas into type-safe server networks and database blueprints. Immersive sandboxed runtimes powered by NVIDIA NIM core plane.
                   </p>
                 </div>
 
@@ -705,8 +705,8 @@ function Dashboard({ user, token, onLogout }) {
   const [mockPreviewPage, setMockPreviewPage] = useState(null);
   const [simulatedSpeech, setSimulatedSpeech] = useState(false);
   const [activeTab, setActiveTab] = useState("Dashboard");
-  const [compileMode, setCompileMode] = useState(() => localStorage.getItem("compiler_compile_mode") || "gemini");
-  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem("compiler_gemini_api_key") || "");
+  const [compileMode, setCompileMode] = useState(() => localStorage.getItem("compiler_compile_mode") === "local" ? "local" : "nvidia");
+  const [nvidiaApiKey, setNvidiaApiKey] = useState(() => localStorage.getItem("compiler_nvidia_api_key") || "");
   const [profileOpen, setProfileOpen] = useState(false);
 
   // Compile Trigger with Progress and Task Simulation
@@ -736,7 +736,7 @@ function Dashboard({ user, token, onLogout }) {
       const headers = {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(compileMode === "gemini" && geminiApiKey ? { "X-Gemini-API-Key": geminiApiKey } : {})
+        ...(compileMode === "nvidia" && nvidiaApiKey ? { "X-Nvidia-API-Key": nvidiaApiKey } : {})
       };
 
       const data = await apiRequest("/api/compile", {
@@ -746,7 +746,7 @@ function Dashboard({ user, token, onLogout }) {
         body: JSON.stringify({
           prompt,
           compileMode,
-          geminiApiKey: compileMode === "gemini" ? geminiApiKey : ""
+          nvidiaApiKey: compileMode === "nvidia" ? nvidiaApiKey : ""
         })
       });
       setOutput(data);
@@ -919,10 +919,10 @@ function Dashboard({ user, token, onLogout }) {
               setCompileMode(mode);
               localStorage.setItem("compiler_compile_mode", mode);
             }}
-            geminiApiKey={geminiApiKey}
-            setGeminiApiKey={(key) => {
-              setGeminiApiKey(key);
-              localStorage.setItem("compiler_gemini_api_key", key);
+            nvidiaApiKey={nvidiaApiKey}
+            setNvidiaApiKey={(key) => {
+              setNvidiaApiKey(key);
+              localStorage.setItem("compiler_nvidia_api_key", key);
             }}
             onClose={() => setActiveTab("Dashboard")}
           />
@@ -2184,7 +2184,7 @@ function SystemAnalytics({ output }) {
 
 /* ================== INTERACTIVE SIMULATION MODALS ================== */
 
-function SettingsModal({ compileMode, setCompileMode, geminiApiKey, setGeminiApiKey, onClose }) {
+function SettingsModal({ compileMode, setCompileMode, nvidiaApiKey, setNvidiaApiKey, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
       <motion.div
@@ -2227,32 +2227,32 @@ function SettingsModal({ compileMode, setCompileMode, geminiApiKey, setGeminiApi
               </button>
               <button
                 type="button"
-                onClick={() => setCompileMode("gemini")}
+                onClick={() => setCompileMode("nvidia")}
                 className={`p-3 border rounded-xl font-bold uppercase tracking-widest transition-all ${
-                  compileMode === "gemini"
+                  compileMode === "nvidia"
                     ? "border-cyan-400 text-cyan-300 bg-cyan-500/5 shadow-glow-cyan"
                     : "border-slate-800 text-slate-400 hover:border-slate-700 hover:text-white"
                 }`}
               >
-                LIVE MODEL (GEMINI)
+                LIVE MODEL (NVIDIA)
               </button>
             </div>
           </div>
 
-          {compileMode === "gemini" && (
+          {compileMode === "nvidia" && (
             <motion.div
               className="space-y-2"
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               transition={{ duration: 0.3 }}
             >
-              <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest">GEMINI API KEY</span>
+              <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest">NVIDIA API KEY</span>
               <div className="relative">
                 <input
                   type="password"
-                  value={geminiApiKey}
-                  onChange={(e) => setGeminiApiKey(e.target.value)}
-                  placeholder="ENTER AIzaSy... CREDENTIAL KEYS"
+                  value={nvidiaApiKey}
+                  onChange={(e) => setNvidiaApiKey(e.target.value)}
+                  placeholder="ENTER NVIDIA API CREDENTIAL KEY"
                   className="w-full bg-slate-950 border border-cyan-400/20 rounded-xl px-4 py-3.5 text-white placeholder:text-slate-700 outline-none focus:border-cyan-400 focus:bg-slate-900/60 font-mono text-[10px] uppercase tracking-wider"
                 />
               </div>

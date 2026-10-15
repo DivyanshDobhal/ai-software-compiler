@@ -32,7 +32,9 @@ In the Vercel project → **Settings → Environment Variables**, add:
 |----------|----------|---------|
 | `APP_URL` | Yes (for OAuth) | Production URL, e.g. `https://ai-software-compiler-seven.vercel.app` |
 | `MONGODB_URI` | Yes (for auth) | MongoDB Atlas connection string |
-| `GEMINI_API_KEY` | Yes (for AI generation) | Google Gemini API key |
+| `NVIDIA_API_KEY` | Yes (for AI generation) | NVIDIA API key |
+| `NVIDIA_MODEL` | No | NVIDIA NIM model (default: `meta/llama-3.3-70b-instruct`) |
+| `NVIDIA_API_URL` | No | NVIDIA chat completions endpoint |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | For Google sign-in | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | For GitHub sign-in | [GitHub Developer Settings](https://github.com/settings/developers) |
 | `OAUTH_STATE_SECRET` | Recommended | Random string used to sign OAuth state |

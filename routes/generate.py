@@ -173,7 +173,7 @@ def generate_application(payload: GenerateRequest):
                 "stageTimings": stage_timings,
                 "retries": len(repairs_applied),
                 "deterministic": False,
-                "costTier": "gemini-live"
+                "costTier": "nvidia-live"
             },
             "status": "success"
         }
@@ -182,13 +182,13 @@ def generate_application(payload: GenerateRequest):
         error_msg = getattr(e, "detail", str(e))
         logger.error(f"Error during application generation: {error_msg}")
         
-        # Check if the failure is due to Gemini being unavailable/failing
-        if "Gemini unavailable" in error_msg:
+        # Check if the failure is due to NVIDIA being unavailable/failing
+        if "NVIDIA unavailable" in error_msg:
             return JSONResponse(
                 status_code=503,
                 content={
                     "success": False,
-                    "error": "Gemini unavailable"
+                    "error": "NVIDIA unavailable"
                 }
             )
             

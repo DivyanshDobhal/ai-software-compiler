@@ -1,6 +1,6 @@
 import json
 import re
-from services.gemini_service import GeminiService
+from services.nvidia_service import NvidiaService
 
 class IntentAgent:
     @staticmethod
@@ -53,7 +53,7 @@ Hard Constraints:
 2. "roles" must always include 'admin' role as it is required by the validation system.
 3. Every feature name in the list must be unique and in lower_snake_case.
 """
-        response_text = GeminiService.generate(system_prompt)
+        response_text = NvidiaService.generate(system_prompt)
         try:
             return json.loads(response_text)
         except json.JSONDecodeError:

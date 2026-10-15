@@ -42,7 +42,7 @@ export function oauthRedirectUri(provider, req) {
 function stateSecret() {
   return (
     process.env.OAUTH_STATE_SECRET ||
-    process.env.GEMINI_API_KEY ||
+    process.env.NVIDIA_API_KEY ||
     process.env.MONGODB_URI ||
     "dev-oauth-state-secret"
   );

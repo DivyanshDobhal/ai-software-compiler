@@ -1,6 +1,6 @@
 import json
 import re
-from services.gemini_service import GeminiService
+from services.nvidia_service import NvidiaService
 
 class SchemaAgent:
     @staticmethod
@@ -116,7 +116,7 @@ Hard Constraints:
 3. Every UI page role must exist in "auth_rules.roles".
 4. Every UI api_dependency path must match an endpoint path in "api_schema.endpoints".
 """
-        response_text = GeminiService.generate(system_prompt)
+        response_text = NvidiaService.generate(system_prompt)
         try:
             return json.loads(response_text)
         except json.JSONDecodeError:

@@ -7,9 +7,9 @@ import {
 import { findUserByToken } from "../src/auth-db.js";
 import { bearerToken } from "./auth.js";
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 45_000);
+const NVIDIA_MODEL = process.env.NVIDIA_MODEL || "meta/llama-3.3-70b-instruct";
+const NVIDIA_URL = process.env.NVIDIA_API_URL || "https://integrate.api.nvidia.com/v1/chat/completions";
+const NVIDIA_TIMEOUT_MS = Number(process.env.NVIDIA_TIMEOUT_MS || 45_000);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
     const prompt = String(body.prompt || "").trim();
-    const compileMode = String(body.compileMode || "gemini").toLowerCase();
+    const compileMode = String(body.compileMode || "nvidia").toLowerCase();
 
     if (!prompt) {
       return res.status(400).json({ error: "Prompt is required" });
@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     }
 
     const customApiKey =
-      body.geminiApiKey || req.headers["x-gemini-api-key"] || req.headers["X-Gemini-API-Key"] || "";
+      body.nvidiaApiKey || req.headers["x-nvidia-api-key"] || req.headers["X-Nvidia-API-Key"] || "";
 
     const output = await compilePrompt(prompt, customApiKey, compileMode);
     return res.status(200).json(formatResponse(output));
@@ -58,7 +58,7 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
     };
   }
 
-  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+  const apiKey = customApiKey || process.env.NVIDIA_API_KEY;
 
   if (!apiKey) {
     return {
@@ -66,18 +66,18 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
       provider: {
         mode: "local-fallback",
         model: "deterministic",
-        reason: "GEMINI_API_KEY is not configured on the server."
+        reason: "NVIDIA_API_KEY is not configured on the server."
       }
     };
   }
 
   try {
-    const geminiBundle = await requestGeminiBundle(prompt, deterministic, apiKey);
-    const validation = validateSchemas(geminiBundle);
-    const repair = repairSchemas(geminiBundle, validation);
+    const generatedBundle = await requestNvidiaBundle(prompt, deterministic, apiKey);
+    const validation = validateSchemas(generatedBundle);
+    const repair = repairSchemas(generatedBundle, validation);
     const finalValidation = validateSchemas({
-      intent: geminiBundle.intent,
-      design: geminiBundle.design,
+      intent: generatedBundle.intent,
+      design: generatedBundle.design,
       schemas: repair.schemas
     });
     const runtime = simulateRuntime(repair.schemas, finalValidation);
@@ -85,8 +85,8 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
     return {
       ok: finalValidation.errors.length === 0 && runtime.ok,
       input: prompt,
-      intent: geminiBundle.intent,
-      design: geminiBundle.design,
+      intent: generatedBundle.intent,
+      design: generatedBundle.design,
       schemas: repair.schemas,
       validation: {
         ...finalValidation,
@@ -100,11 +100,11 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
         stageTimings: deterministic.metrics.stageTimings,
         retries: repair.applied.length,
         deterministic: false,
-        costTier: "gemini-live"
+        costTier: "nvidia-live"
       },
       provider: {
-        mode: "gemini-live",
-        model: GEMINI_MODEL,
+        mode: "nvidia-live",
+        model: NVIDIA_MODEL,
         fallbackUsed: false
       }
     };
@@ -115,45 +115,38 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
         mode: "local-fallback",
         model: "deterministic",
         fallbackUsed: true,
-        reason: error instanceof Error ? error.message : "Gemini request failed"
+        reason: error instanceof Error ? error.message : "NVIDIA request failed"
       }
     };
   }
 }
 
-async function requestGeminiBundle(prompt, seed, apiKey) {
-  const response = await fetch(GEMINI_URL, {
+async function requestNvidiaBundle(prompt, seed, apiKey) {
+  const response = await fetch(NVIDIA_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-goog-api-key": apiKey
+      Authorization: `Bearer ${apiKey}`,
+      Accept: "application/json"
     },
     body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: buildCompilerPrompt(prompt, seed)
-            }
-          ]
-        }
-      ],
-      generationConfig: {
-        temperature: 0.1,
-        responseMimeType: "application/json"
-      }
+      model: NVIDIA_MODEL,
+      messages: [{ role: "user", content: buildCompilerPrompt(prompt, seed) }],
+      temperature: 0.1,
+      max_tokens: 8192,
+      stream: false
     }),
-    signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS)
+    signal: AbortSignal.timeout(NVIDIA_TIMEOUT_MS)
   });
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`Gemini ${response.status}: ${detail.slice(0, 240)}`);
+    throw new Error(`NVIDIA ${response.status}: ${detail.slice(0, 240)}`);
   }
 
   const payload = await response.json();
-  const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
+  const text = payload.choices?.[0]?.message?.content || "";
+  if (!text.trim()) throw new Error("NVIDIA returned an empty completion.");
   const parsed = parseJson(text);
   return normalizeBundle(parsed, seed);
 }
@@ -207,7 +200,7 @@ function parseJson(text) {
     return JSON.parse(text);
   } catch {
     const match = text.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("Gemini did not return JSON.");
+    if (!match) throw new Error("NVIDIA did not return JSON.");
     return JSON.parse(match[0]);
   }
 }
