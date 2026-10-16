@@ -67,9 +67,9 @@ body {
 
 /* Premium modern SaaS Glassmorphism Card */
 .glass-card-saas {
-  background: rgba(255, 255, 255, 0.015);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(10, 17, 32, 0.68);
+  backdrop-filter: blur(22px) saturate(125%);
+  -webkit-backdrop-filter: blur(22px) saturate(125%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
@@ -79,18 +79,18 @@ body {
 }
 
 .glass-card-saas-hover:hover {
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(148, 163, 184, 0.28);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.025);
+  background: rgba(15, 23, 42, 0.78);
   transform: translateY(-2px);
 }
 
 /* Clean Sidebar */
 .glass-sidebar-saas {
-  background: rgba(11, 18, 32, 0.45);
+  background: rgba(8, 14, 28, 0.88);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid rgba(255, 255, 255, 0.09);
 }
 
 /* Subtle Active indicator for Nav Links */
@@ -114,6 +114,20 @@ body {
   border-color: rgba(99, 102, 241, 0.5);
   background: rgba(255, 255, 255, 0.025);
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Soft gradient elements */
