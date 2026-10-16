@@ -11,6 +11,9 @@
     "api/compile.js": {
       "maxDuration": 60
     },
+    "api/learning-assistant.js": {
+      "maxDuration": 30
+    },
     "api/auth.js": {
       "maxDuration": 30
     }

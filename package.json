@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "test": "node tests/run-evaluation.js"
+    "test": "node --test tests/*.test.js && node scripts/validate-learning-dataset.js && node tests/run-evaluation.js"
   },
   "keywords": [
     "software-generation",

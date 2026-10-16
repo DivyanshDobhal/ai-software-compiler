@@ -37,6 +37,10 @@ In the Vercel project → **Settings → Environment Variables**, add:
 | `NVIDIA_API_URL` | No | NVIDIA chat completions endpoint |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | For Google sign-in | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | For GitHub sign-in | [GitHub Developer Settings](https://github.com/settings/developers) |
+
+## AI Learning Assistant
+
+The floating tutor uses the verified knowledge base in `data/ai_learning_assistant.jsonl`. It reuses the server-side NVIDIA configuration when available and falls back to dataset search otherwise. See [the assistant setup and dataset guide](docs/ai-learning-assistant.md) for privacy behavior, supported environment variables, validation, and extension steps.
 | `OAUTH_STATE_SECRET` | Recommended | Random string used to sign OAuth state |
 | `AUTH_TOKEN_TTL_DAYS` | No | Session lifetime (default: 7) |
 
