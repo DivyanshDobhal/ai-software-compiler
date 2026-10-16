@@ -1,7 +1,8 @@
 import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import LandingExperience from "./landing.jsx";
+import LearningAssistantWidget from "./learning-assistant-widget.jsx";
 import {
   Activity,
   AlertCircle,
@@ -434,25 +435,14 @@ function FeatureCard({ feature, index }) {
   );
 }
 
-function AnimatedBackground() {
+function AnimatedBackground({ mode = "animated" }) {
+  const reduceMotion = useReducedMotion();
   return (
-    <div aria-hidden="true" className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-      <motion.div
-        className="absolute left-[-10%] top-[-10%] w-[60%] h-[60%] rounded-full bg-blue-600/5 blur-[150px]"
-        animate={{
-          x: [0, 50, 0],
-          y: [0, 30, 0],
-        }}
-        transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        className="absolute right-[-10%] bottom-[-10%] w-[60%] h-[60%] rounded-full bg-purple-600/5 blur-[150px]"
-        animate={{
-          x: [0, -50, 0],
-          y: [0, -30, 0],
-        }}
-        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
-      />
+    <div aria-hidden="true" className={`dashboard-background dashboard-background--${mode}`}>
+      {mode === "animated" && !reduceMotion && <>
+        <motion.div className="dashboard-atmosphere dashboard-atmosphere-left" animate={{ x: [0, 28, 0], y: [0, 16, 0] }} transition={{ duration: 28, repeat: Infinity, ease: "easeInOut" }} />
+        <motion.div className="dashboard-atmosphere dashboard-atmosphere-right" animate={{ x: [0, -24, 0], y: [0, -16, 0] }} transition={{ duration: 32, repeat: Infinity, ease: "easeInOut" }} />
+      </>}
     </div>
   );
 }
@@ -718,6 +708,7 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
   const [compileMode, setCompileMode] = useState(() => localStorage.getItem("compiler_compile_mode") === "local" ? "local" : "gemini");
   const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem("compiler_gemini_api_key") || "");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [backgroundMode, setBackgroundMode] = useState(() => localStorage.getItem("compiler_background_mode") || "animated");
   const [compilationsThisSession, setCompilationsThisSession] = useState(0);
 
   // Compile Trigger with Progress and Task Simulation
@@ -786,16 +777,19 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
     if (element) {
       element.scrollIntoView({ behavior: "smooth", block: "center" });
     }
+    if (label === "dashboard") {
+      window.setTimeout(() => document.querySelector("#dashboard textarea")?.focus(), 120);
+    }
   }
 
   return (
     <motion.div
-      className="relative min-h-screen text-white overflow-x-hidden flex font-sans"
+      className="dashboard-workspace relative min-h-screen text-white overflow-x-hidden flex font-sans"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
-      <AnimatedBackground />
+      <AnimatedBackground mode={backgroundMode} />
 
       {mobileNavOpen && <button type="button" className="workspace-mobile-scrim lg:hidden" onClick={() => setMobileNavOpen(false)} aria-label="Close workspace navigation" />}
 
@@ -810,7 +804,7 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
       />
 
       {/* Main OS Console */}
-      <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${sidebarExpanded ? "lg:ml-72" : "lg:ml-20"} z-10 relative`}>
+      <div className={`dashboard-main flex-1 flex flex-col min-h-screen transition-all duration-300 ${sidebarExpanded ? "lg:ml-72" : "lg:ml-20"} z-10 relative`}>
         {/* Top Navigation Console */}
         <AITopNavbar
           user={user}
@@ -824,7 +818,7 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
         />
 
         {/* Console Workspace Grid */}
-        <main className="p-6 lg:p-8 space-y-8 max-w-7xl w-full mx-auto pb-24">
+        <main className="dashboard-content">
           
           {/* Welcome Header & KPI Metrics Grid */}
           <WelcomeHeader user={user} onNewProjectClick={() => navigateToSection("dashboard")} />
@@ -845,6 +839,7 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
               onStartSpeech={startMockSpeech}
             />
           </div>
+          <DashboardQuickActions output={output} onNavigate={navigateToSection} />
 
           {/* Compilation progress and stage timings */}
           <div id="intent-extraction">
@@ -856,7 +851,7 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
             <BlueprintSchemasConsole output={output} />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="dashboard-panel-grid grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* Section 4: Symmetrical Systems HUD */}
             <div id="system-design" className="lg:col-span-8">
               <ArchitectureMap output={output} />
@@ -876,7 +871,7 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
             />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="dashboard-panel-grid grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* Section 7: Symmetrical File Modules */}
             <div id="projects" className="lg:col-span-7">
               <RecentProjects output={output} onCompilePrompt={setPrompt} />
@@ -909,6 +904,11 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
               setGeminiApiKey(key);
               localStorage.setItem("compiler_gemini_api_key", key);
             }}
+            backgroundMode={backgroundMode}
+            setBackgroundMode={(mode) => {
+              setBackgroundMode(mode);
+              localStorage.setItem("compiler_background_mode", mode);
+            }}
             onClose={() => setActiveTab("Dashboard")}
           />
         )}
@@ -938,6 +938,7 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
           />
         )}
       </AnimatePresence>
+      <LearningAssistantWidget context={{ section: "dashboard", audience: experienceProfile?.audience, experience: experienceProfile?.experience, goal: experienceProfile?.goal }} />
     </motion.div>
   );
 }
@@ -953,12 +954,9 @@ function WelcomeHeader({ user, onNewProjectClick }) {
       transition={{ duration: 0.5 }}
     >
       <div className="space-y-1 z-10">
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-white font-sans tracking-tight">
-          Welcome back, {user?.name?.split(" ")[0] || "builder"}.
-        </h1>
-        <p className="text-sm text-slate-400 font-sans">
-          Describe an idea, then review its architecture, schemas, APIs, and validation.
-        </p>
+        <p className="dashboard-eyebrow">AI COMPILER STUDIO WORKSPACE</p>
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-white font-sans tracking-tight">Welcome to AI Compiler Studio</h1>
+        <p className="text-sm text-slate-400 font-sans">What would you like to build today?</p>
       </div>
       <div className="flex gap-3 flex-shrink-0 z-10">
         <button
@@ -1014,6 +1012,17 @@ function MetricsGrid({ output, compileMode, compilationsThisSession }) {
       ))}
     </div>
   );
+}
+
+function DashboardQuickActions({ output, onNavigate }) {
+  const actions = [
+    { label: "Create new project", icon: Plus, target: "dashboard" },
+    { label: "Continue latest result", icon: Blocks, target: "projects", disabled: !output },
+    { label: "View architecture", icon: Network, target: "system-design" },
+    { label: "Review validation", icon: ShieldCheck, target: "validation-engine" },
+    { label: "Open runtime preview", icon: PlayCircle, target: "runtime-generator" }
+  ];
+  return <nav className="dashboard-quick-actions" aria-label="Workspace quick actions">{actions.map(({ label, icon: Icon, target, disabled }) => <button type="button" key={label} onClick={() => onNavigate(target)} disabled={disabled}><Icon size={16} /><span>{label}</span><ArrowRight size={14} /></button>)}</nav>;
 }
 
 function AIOSSidebar({ expanded, setExpanded, activeTab, onNavigate, mobileOpen = false, onClose }) {
@@ -1219,10 +1228,10 @@ function AICommandCenter({ prompt, setPrompt, onCompile, compiling, error, speec
     >
       <div>
         <h2 className="text-2xl font-bold tracking-tight text-white font-sans">
-          Studio Generator
+          Describe your next software project
         </h2>
         <p className="text-slate-400 text-sm mt-1">
-          Describe the feature set, workflows, and pages of your ideal application. The engine compiles structural schema, endpoints, data tables, and dynamic user interfaces in real time.
+          Describe your next software project. Review the generated architecture, schemas, APIs, and validation in the workspace.
         </p>
       </div>
 
@@ -1890,7 +1899,7 @@ function SystemAnalytics({ output }) {
 
 /* ================== INTERACTIVE SIMULATION MODALS ================== */
 
-function SettingsModal({ compileMode, setCompileMode, geminiApiKey, setGeminiApiKey, onClose }) {
+function SettingsModal({ compileMode, setCompileMode, geminiApiKey, setGeminiApiKey, backgroundMode, setBackgroundMode, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
       <motion.div
@@ -1917,6 +1926,14 @@ function SettingsModal({ compileMode, setCompileMode, geminiApiKey, setGeminiApi
         </div>
 
         <div className="space-y-6 font-mono text-xs text-slate-300">
+          <fieldset className="space-y-2">
+            <legend className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest">Background preference</legend>
+            <div className="grid grid-cols-3 gap-2">
+              {[["animated", "Animated"], ["static", "Static"], ["minimal", "Minimal dark"]].map(([value, label]) => <button key={value} type="button" aria-pressed={backgroundMode === value} onClick={() => setBackgroundMode(value)} className={`rounded-xl border px-2 py-3 text-[10px] font-semibold transition ${backgroundMode === value ? "border-cyan-300/60 bg-cyan-300/10 text-cyan-100" : "border-slate-800 bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:text-white"}`}>{label}</button>)}
+            </div>
+            <p className="text-[9px] text-slate-500">Your choice is saved in this browser. Reduced-motion settings disable ambient movement.</p>
+          </fieldset>
+
           <div className="space-y-2">
             <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest">COMPILE TIER MODE</span>
             <div className="grid grid-cols-2 gap-3">

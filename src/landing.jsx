@@ -5,6 +5,7 @@ import {
   Building2, Check, ChevronDown, Code2, Compass, Database, GraduationCap,
   Layers3, Menu, Network, Rocket, ShieldCheck, Sparkles, X, Zap
 } from "lucide-react";
+import LearningAssistantWidget from "./learning-assistant-widget.jsx";
 
 const ArchitectureScene = lazy(() => import("./architecture-scene.jsx"));
 
@@ -84,7 +85,7 @@ const audienceCopy = {
   business: { eyebrow: "Make complex workflows easier to plan", title: <>Your operations, <span>designed as software.</span></>, body: "Map business processes into clear roles, data models, and application blueprints that teams can discuss." },
   agency: { eyebrow: "Turn client briefs into a shared starting point", title: <>Make the first draft <span>count.</span></>, body: "Shape project requirements into repeatable architecture and application plans for client work." },
   educator: { eyebrow: "Make software concepts easier to see", title: <>Explore ideas through <span>working blueprints.</span></>, body: "Create structured prototypes for classrooms, research, and experimentation with outputs you can inspect." },
-  exploring: { eyebrow: "A simple place to start building", title: <>Your ideas. <span>Compiled into software.</span></>, body: "Describe the application you want to build. AI Compiler Studio translates your requirements into architecture, database schemas, APIs, and validated application blueprints." }
+  exploring: { eyebrow: "A thoughtful place to start building", title: <>Your ideas. <span>Compiled into software.</span></>, body: "Build applications, explore architectures, and turn natural-language ideas into software with AI." }
 };
 
 const workflow = [
@@ -96,12 +97,14 @@ const workflow = [
 ];
 
 const features = [
-  { icon: Sparkles, title: "Requirement analysis", text: "Break a product brief into roles, workflows, entities, and application capabilities." },
-  { icon: Network, title: "System architecture", text: "Explore the services and connections that shape the application design." },
-  { icon: Database, title: "Database schemas", text: "Inspect collections, fields, relationships, and the data behind each workflow." },
-  { icon: Blocks, title: "API blueprints", text: "Review structured endpoints and their input, output, and access expectations." },
-  { icon: ShieldCheck, title: "Validation and repair", text: "Find inconsistencies in a generated blueprint and review repair feedback." },
-  { icon: Layers3, title: "Runtime preview", text: "Interact with a sandbox preview to better understand the proposed experience." }
+  { icon: Sparkles, title: "AI-assisted creation", text: "Turn a product description into a structured starting blueprint with the configured AI provider." },
+  { icon: Zap, title: "Compilation pipeline", text: "Follow requirement analysis, design, schema generation, validation, and preview stages." },
+  { icon: Network, title: "Architecture visualization", text: "Explore a visual map of the services and connections in the generated design." },
+  { icon: Database, title: "Schema management", text: "Inspect generated collections, fields, relationships, and data structures." },
+  { icon: Blocks, title: "API blueprints", text: "Review endpoint shapes, expected inputs, responses, and access notes." },
+  { icon: ShieldCheck, title: "Validation and debugging", text: "Find inconsistencies and review the validation and repair feedback." },
+  { icon: Layers3, title: "Runtime preview", text: "Explore a sandboxed preview of pages represented in the generated UI schema." },
+  { icon: BookOpen, title: "Session results", text: "Revisit the latest compilation in this browser session; project history is not currently persisted." }
 ];
 
 const useCases = [
@@ -359,41 +362,40 @@ export default function LandingExperience({ user, token, experienceProfile, onPr
             <a href="#product" onClick={() => setMobileMenuOpen(false)}>Product</a>
             <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>How it works</a>
             <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
-            <a href="#use-cases" onClick={() => setMobileMenuOpen(false)}>Use cases</a>
-            <button type="button" className="audience-nav-button" onClick={() => { setOnboardingOpen(true); setMobileMenuOpen(false); }}><span>{audienceChoices.find((choice) => choice.id === audience)?.title || "Explore"}</span><ChevronDown size={14} /></button>
+            <a href="https://github.com/DivyanshDobhal/ai-software-compiler#readme" target="_blank" rel="noreferrer" onClick={() => setMobileMenuOpen(false)}>Documentation</a>
             {!user ? <button type="button" className="nav-signin" onClick={() => onSignIn("login")}>Sign in</button> : <span className="nav-user">Hi, {user.name?.split(" ")[0] || "builder"}</span>}
-            <button type="button" className="button-primary nav-cta" onClick={startBuild}>{user ? "Open workspace" : "Start building free"}<ArrowRight size={16} /></button>
+            <button type="button" className="audience-nav-button" onClick={() => { setOnboardingOpen(true); setMobileMenuOpen(false); }}><span>{audienceChoices.find((choice) => choice.id === audience)?.title || "Explore"}</span><ChevronDown size={14} /></button>
+            <button type="button" className="button-primary nav-cta" onClick={startBuild}>{user ? "Open workspace" : "Start building"}<ArrowRight size={16} /></button>
           </div>
         </nav>
       </header>
 
       <main>
-        <section className="landing-hero page-section" id="home">
+        <section className="landing-hero landing-hero-immersive page-section" id="home">
           <div className="hero-copy">
             <motion.div className="hero-eyebrow" initial={reduceMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}><span className="eyebrow-dot" />{content.eyebrow}</motion.div>
             <motion.h1 initial={reduceMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }}>{content.title}</motion.h1>
             <motion.p className="hero-body" initial={reduceMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>{content.body}</motion.p>
             {beginner && <div className="beginner-note"><BookOpen size={15} /><span>New to coding? We’ll explain each part of the blueprint in plain language.</span></div>}
-            <div className="hero-actions">
-              <button type="button" className="button-primary button-large" onClick={startBuild}>{user ? "Open your workspace" : "Start building free"}<ArrowRight size={17} /></button>
-              <a className="button-quiet button-large" href="#product">Explore the platform<ArrowDown size={16} /></a>
-            </div>
-            <div className="hero-audience"><span className="audience-avatar-stack"><i>01</i><i>02</i><i>03</i></span><span>For learners, builders, and teams</span></div>
           </div>
-
-          <div className="hero-visual-wrap"><ArchitectureVisual /></div>
 
           <div className="prompt-composer-wrap">
-            <div className="prompt-composer">
+            <form className="prompt-composer" onSubmit={(event) => { event.preventDefault(); if (prompt.trim()) startBuild(); }}>
               <div className="prompt-composer-label"><span><Zap size={15} /> Describe what you want to build</span><span className="composer-hint">Start with an idea. Refine it as you go.</span></div>
-              <textarea aria-label="Describe the application you want to build" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={audience === "student" ? "For example: Build a study planner with assignments, deadlines, and progress…" : "For example: Build a project workspace with teams, tasks, permissions, and a dashboard…"} maxLength={500} rows={3} />
-              <div className="prompt-composer-footer"><span>{prompt.length}/500</span><button className="button-primary" type="button" onClick={startBuild}>{user ? "Open workspace" : "Start building"}<ArrowRight size={16} /></button></div>
-            </div>
+              <textarea aria-label="Describe the application you want to build" value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); if (prompt.trim()) startBuild(); } }} placeholder="Describe the application you want to build…" maxLength={500} rows={3} />
+              <div className="prompt-composer-footer"><span>{prompt.length}/500 · Press ⌘/Ctrl + Enter to continue</span><button className="button-primary" type="submit" disabled={!prompt.trim()}>{user ? "Continue in workspace" : "Start building"}<ArrowRight size={16} /></button></div>
+            </form>
             <div className="prompt-suggestions"><span className="suggestion-label">Try an example</span>{suggestedPrompts.slice(0, 3).map((example) => <button type="button" className="prompt-chip" key={example} onClick={() => fillPrompt(example)}>{example}</button>)}</div>
           </div>
+          <div className="hero-actions"><a className="button-quiet button-large" href="#product">Explore the platform<ArrowDown size={16} /></a></div>
         </section>
 
-        <section className="workflow-section page-section" id="how-it-works">
+        <section className="starter-projects-section page-section" id="examples">
+          <div className="section-heading"><p className="eyebrow">A place to begin</p><h2>From ideas to <span>real applications.</span></h2><p>Choose a starter brief to place it in the composer. These are prompt examples, not customer projects or generated results.</p></div>
+          <div className="starter-project-grid">{suggestedPrompts.slice(0, 3).map((example, index) => <button type="button" className="starter-project-card" key={example} onClick={() => fillPrompt(example)}><span className="starter-project-index">0{index + 1} · PROMPT STARTER</span><strong>{example}</strong><span className="starter-project-action">Use this idea <ArrowRight size={15} /></span></button>)}</div>
+        </section>
+
+        <section className="workflow-section editorial-light page-section" id="how-it-works">
           <div className="section-heading"><p className="eyebrow">A structured path from idea to blueprint</p><h2>See the shape of your software <span>before you build it.</span></h2><p>Move from a plain-language brief to an inspectable, validated application plan.</p></div>
           <div className="workflow-track">{workflow.map(([number, title, description], index) => <div className="workflow-step" key={title}><div className="workflow-step-top"><span>{number}</span>{index < workflow.length - 1 && <i />}</div><h3>{title}</h3><p>{description}</p></div>)}</div>
         </section>
@@ -416,8 +418,13 @@ export default function LandingExperience({ user, token, experienceProfile, onPr
           </div>
         </section>
 
+        <section className="application-types-section editorial-light page-section" aria-labelledby="application-types-title">
+          <div className="section-heading"><p className="eyebrow">Responsive application planning</p><h2 id="application-types-title">Plan for the screens <span>people use.</span></h2><p>Explore web application structure and sandboxed interface previews across desktop and mobile-sized screens. The compiler produces blueprints; review generated output before treating it as production software.</p></div>
+          <div className="application-types-grid"><article className="application-type-card"><span className="application-type-icon"><Network size={19} /></span><h3>Web application blueprints</h3><p>Describe the pages, roles, data, and workflows you want to plan.</p><a href="#home" onClick={() => document.querySelector("#home textarea")?.focus()}>Describe a web app <ArrowRight size={15} /></a></article><article className="application-type-card"><span className="application-type-icon"><Layers3 size={19} /></span><h3>Responsive interface previews</h3><p>Inspect a sandboxed preview and review how the proposed interface is organized.</p><a href="#product">Explore the preview <ArrowRight size={15} /></a></article></div>
+        </section>
+
         <section className="features-section page-section" id="features">
-          <div className="section-heading"><p className="eyebrow">From requirements to review</p><h2>Every layer has a <span>place.</span></h2><p>Keep the important technical decisions together in one understandable blueprint.</p></div>
+          <div className="section-heading"><p className="eyebrow">From requirements to review</p><h2>Everything you need <span>to build.</span></h2><p>Keep the important technical decisions together in one understandable blueprint.</p></div>
           <div className="feature-grid">{features.map(({ icon: Icon, title, text }, index) => <article className="feature-card" key={title}><span className="feature-icon"><Icon size={19} /></span><span className="feature-index">0{index + 1}</span><h3>{title}</h3><p>{text}</p><span className="feature-bottom-line" /></article>)}</div>
         </section>
 
@@ -427,7 +434,7 @@ export default function LandingExperience({ user, token, experienceProfile, onPr
           <button type="button" className="change-audience-link" onClick={() => setOnboardingOpen(true)}>Personalize your examples<ArrowRight size={15} /></button>
         </section>
 
-        <section className="final-cta page-section"><div className="final-cta-orb" /><span className="eyebrow"><Sparkles size={14} /> YOUR NEXT IDEA STARTS HERE</span><h2>Turn your next idea <span>into software.</span></h2><p>Start with a clear description. Explore the structure behind what you want to build.</p><button className="button-primary button-large" type="button" onClick={startBuild}>{user ? "Open your workspace" : "Start building free"}<ArrowRight size={17} /></button></section>
+        <section className="final-cta page-section"><div className="final-cta-orb" /><span className="eyebrow"><Sparkles size={14} /> YOUR NEXT IDEA STARTS HERE</span><h2>What will you <span>build today?</span></h2><p>Start with a clear description. Explore the structure behind what you want to build.</p><button className="button-primary button-large" type="button" onClick={startBuild}>{user ? "Open your workspace" : "Start building"}<ArrowRight size={17} /></button></section>
       </main>
 
       <footer className="landing-footer"><a className="landing-brand" href="#home"><span className="brand-glyph"><Sparkles size={17} /></span><span>AI Compiler <i>Studio</i></span></a><p>Explore the structure behind your next software idea.</p><div className="footer-links"><a href="#product">Product</a><a href="#features">Features</a><a href="#use-cases">Use cases</a><a href="https://github.com/DivyanshDobhal/ai-software-compiler#readme" target="_blank" rel="noreferrer">Documentation</a><button type="button" onClick={() => setFooterDocument("privacy")}>Privacy</button><button type="button" onClick={() => setFooterDocument("terms")}>Terms</button><a href="https://github.com/DivyanshDobhal/ai-software-compiler/issues" target="_blank" rel="noreferrer">Contact maintainers</a></div><span className="footer-copyright">© {new Date().getFullYear()} AI Compiler Studio</span></footer>
@@ -444,6 +451,7 @@ export default function LandingExperience({ user, token, experienceProfile, onPr
       {profileSaveNotice && <div className="profile-save-notice" role="status">{profileSaveNotice}<button type="button" onClick={() => setProfileSaveNotice("")} aria-label="Dismiss message"><X size={14} /></button></div>}
 
       <AnimatePresence>{onboardingOpen && <ExperienceOnboarding key="experience-onboarding" initialProfile={experienceProfile} onSave={saveProfile} onClose={() => setOnboardingOpen(false)} onDismiss={dismissOnboarding} />}</AnimatePresence>
+      <LearningAssistantWidget context={{ section: "landing", audience, experience: experienceProfile?.experience, goal: experienceProfile?.goal }} />
     </div>
   );
 }

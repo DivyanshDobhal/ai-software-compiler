@@ -71,45 +71,45 @@ test("API rejects unsupported methods and invalid messages", async () => {
   assert.equal(invalidResponse.statusCode, 400);
 });
 
-test("API rejects oversized requests and labels provider responses", async () => {
+test("API rejects oversized requests and labels Gemini responses", async () => {
   const sizeResponse = mockResponse();
   await handler({ method: "POST", headers: { "content-length": "10001", "x-forwarded-for": "test-size" }, body: { message: "hello" } }, sizeResponse);
   assert.equal(sizeResponse.statusCode, 413);
 
-  const previousKey = process.env.NVIDIA_API_KEY;
+  const previousKey = process.env.GEMINI_API_KEY;
   const previousFetch = globalThis.fetch;
-  process.env.NVIDIA_API_KEY = "unit-test-placeholder";
+  process.env.GEMINI_API_KEY = "unit-test-placeholder";
   let capturedPayload;
   globalThis.fetch = async (_url, options) => {
     capturedPayload = JSON.parse(options.body);
-    return { ok: true, json: async () => ({ choices: [{ message: { content: "Grounded mock answer." } }] }) };
+    return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: "Grounded mock answer." }] } }] }) };
   };
   const response = mockResponse();
   try {
     await handler({ method: "POST", headers: { "x-forwarded-for": "test-provider-success" }, body: { message: "What is the runtime preview?", mode: "walkthrough", context: { section: "runtime-generator", prompt: "private project text" } } }, response);
   } finally {
-    if (previousKey === undefined) delete process.env.NVIDIA_API_KEY;
-    else process.env.NVIDIA_API_KEY = previousKey;
+    if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousKey;
     globalThis.fetch = previousFetch;
   }
-  assert.equal(response.body.source, "nvidia");
-  assert.match(capturedPayload.messages[0].content, /untrusted data/);
-  const userPayload = JSON.parse(capturedPayload.messages[1].content);
+  assert.equal(response.body.source, "gemini");
+  assert.match(capturedPayload.system_instruction.parts[0].text, /untrusted data/);
+  const userPayload = JSON.parse(capturedPayload.contents[0].parts[0].text);
   assert.equal(userPayload.learningMode, "walkthrough");
   assert.deepEqual(userPayload.safePageContext, { section: "runtime-generator" });
   assert.equal(JSON.stringify(userPayload).includes("private project text"), false);
 });
 
 test("API uses deterministic dataset fallback when the model key is absent", async () => {
-  const previousKey = process.env.NVIDIA_API_KEY;
+  const previousKey = process.env.GEMINI_API_KEY;
   const previousFetch = globalThis.fetch;
-  delete process.env.NVIDIA_API_KEY;
+  delete process.env.GEMINI_API_KEY;
   const response = mockResponse();
   try {
     await handler({ method: "POST", headers: { "x-forwarded-for": "test-fallback" }, body: { message: "What is the runtime preview?", context: { section: "runtime-generator", prompt: "must not be sent" } } }, response);
   } finally {
-    if (previousKey === undefined) delete process.env.NVIDIA_API_KEY;
-    else process.env.NVIDIA_API_KEY = previousKey;
+    if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousKey;
     globalThis.fetch = previousFetch;
   }
   assert.equal(response.statusCode, 200);
@@ -118,16 +118,16 @@ test("API uses deterministic dataset fallback when the model key is absent", asy
 });
 
 test("model failure returns a labeled deterministic fallback", async () => {
-  const previousKey = process.env.NVIDIA_API_KEY;
+  const previousKey = process.env.GEMINI_API_KEY;
   const previousFetch = globalThis.fetch;
-  process.env.NVIDIA_API_KEY = "unit-test-placeholder";
+  process.env.GEMINI_API_KEY = "unit-test-placeholder";
   globalThis.fetch = async () => ({ ok: false, status: 503 });
   const response = mockResponse();
   try {
     await handler({ method: "POST", headers: { "x-forwarded-for": "test-provider-failure" }, body: { message: "What happens when NVIDIA is unavailable?" } }, response);
   } finally {
-    if (previousKey === undefined) delete process.env.NVIDIA_API_KEY;
-    else process.env.NVIDIA_API_KEY = previousKey;
+    if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousKey;
     globalThis.fetch = previousFetch;
   }
   assert.equal(response.statusCode, 200);
@@ -135,12 +135,13 @@ test("model failure returns a labeled deterministic fallback", async () => {
   assert.match(response.body.answer, /local knowledge search/i);
 });
 
-test("the product mounts the supplied landing page and compiler workspace without a chat overlay", () => {
+test("the product mounts the landing page, compiler workspace, and learning assistant", () => {
   const source = readFileSync(join(process.cwd(), "src/main.jsx"), "utf8");
   assert.match(source, /<LandingExperience/);
   assert.match(source, /<Dashboard/);
-  assert.doesNotMatch(source, /LearningAssistant/);
-  assert.doesNotMatch(source, /learning-assistant\.jsx/);
+  assert.match(source, /LearningAssistantWidget/);
+  assert.match(readFileSync(join(process.cwd(), "src/landing.jsx"), "utf8"), /<LearningAssistantWidget/);
+  assert.match(source, /learning-assistant-widget\.jsx/);
 });
 
 test("evaluation set includes at least 30 valid cases across required risk classes", () => {
