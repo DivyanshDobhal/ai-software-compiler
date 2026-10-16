@@ -18,7 +18,7 @@
   "rewrites": [
     {
       "source": "/api/auth/(.*)",
-      "destination": "/api/auth"
+      "destination": "/api/auth?action=$1"
     },
     {
       "source": "/health/llm",

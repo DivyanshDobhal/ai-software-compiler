@@ -36,7 +36,21 @@ export function getRequestBaseUrl(req) {
 }
 
 export function oauthRedirectUri(provider, req) {
-  return `${getRequestBaseUrl(req)}/api/auth/${provider}/callback`;
+  const reqUrl = getRequestBaseUrl(req);
+  const isLocal = reqUrl.includes("localhost") || reqUrl.includes("127.0.0.1");
+
+  // In local development, use localhost
+  if (isLocal) {
+    return `${reqUrl}/api/auth/${provider}/callback`;
+  }
+
+  // In hosted environments, prefer APP_URL if configured as that matches OAuth provider consoles
+  if (process.env.APP_URL) {
+    const appUrl = process.env.APP_URL.replace(/\/$/, "");
+    return `${appUrl}/api/auth/${provider}/callback`;
+  }
+
+  return `${reqUrl}/api/auth/${provider}/callback`;
 }
 
 function stateSecret() {
@@ -48,10 +62,12 @@ function stateSecret() {
   );
 }
 
-export function createOAuthState(provider, redirectUri) {
+export function createOAuthState(provider, redirectUri, req) {
+  const returnTo = req ? getRequestBaseUrl(req) : null;
   const payload = JSON.stringify({
     provider,
     redirectUri,
+    returnTo,
     nonce: randomBytes(16).toString("hex"),
     ts: Date.now()
   });
@@ -83,12 +99,17 @@ export function verifyOAuthState(state, expectedProvider) {
   if (payload.provider !== expectedProvider) return null;
   if (Date.now() - payload.ts > 10 * 60 * 1000) return null;
 
-  return { redirectUri: payload.redirectUri };
+  return {
+    redirectUri: payload.redirectUri,
+    returnTo: payload.returnTo || null
+  };
 }
 
 export function buildGoogleAuthUrl(req) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
-  if (!clientId) throw new Error("GOOGLE_CLIENT_ID is not configured.");
+  if (!clientId) {
+    throw new Error("Google OAuth is not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.");
+  }
 
   const redirectUri = oauthRedirectUri("google", req);
 
@@ -99,7 +120,7 @@ export function buildGoogleAuthUrl(req) {
     scope: "openid email profile",
     access_type: "online",
     prompt: "select_account",
-    state: createOAuthState("google", redirectUri)
+    state: createOAuthState("google", redirectUri, req)
   });
 
   return `${GOOGLE_AUTH_URL}?${params.toString()}`;
@@ -107,7 +128,9 @@ export function buildGoogleAuthUrl(req) {
 
 export function buildGitHubAuthUrl(req) {
   const clientId = process.env.GITHUB_CLIENT_ID;
-  if (!clientId) throw new Error("GITHUB_CLIENT_ID is not configured.");
+  if (!clientId) {
+    throw new Error("GitHub OAuth is not configured. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET.");
+  }
 
   const redirectUri = oauthRedirectUri("github", req);
 
@@ -115,7 +138,7 @@ export function buildGitHubAuthUrl(req) {
     client_id: clientId,
     redirect_uri: redirectUri,
     scope: "user:email",
-    state: createOAuthState("github", redirectUri)
+    state: createOAuthState("github", redirectUri, req)
   });
 
   return `${GITHUB_AUTH_URL}?${params.toString()}`;
@@ -125,7 +148,7 @@ export async function exchangeGoogleCode(code, redirectUri) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    throw new Error("Google OAuth is not fully configured.");
+    throw new Error("Google OAuth credentials are incomplete on the server.");
   }
 
   const tokenResponse = await fetch(GOOGLE_TOKEN_URL, {
@@ -166,7 +189,7 @@ export async function exchangeGitHubCode(code, redirectUri) {
   const clientId = process.env.GITHUB_CLIENT_ID;
   const clientSecret = process.env.GITHUB_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    throw new Error("GitHub OAuth is not fully configured.");
+    throw new Error("GitHub OAuth credentials are incomplete on the server.");
   }
 
   const tokenResponse = await fetch(GITHUB_TOKEN_URL, {
@@ -212,7 +235,7 @@ export async function exchangeGitHubCode(code, redirectUri) {
   }
 
   if (!email) {
-    throw new Error("GitHub did not return a verified email. Make email visible to this app.");
+    throw new Error("GitHub did not return a verified email. Make email visible in GitHub profile settings.");
   }
 
   return {
@@ -224,14 +247,14 @@ export async function exchangeGitHubCode(code, redirectUri) {
   };
 }
 
-export function buildFrontendSuccessRedirect(token, req) {
-  const base = getRequestBaseUrl(req);
+export function buildFrontendSuccessRedirect(token, reqOrUrl) {
+  const base = typeof reqOrUrl === "string" ? reqOrUrl.replace(/\/$/, "") : getRequestBaseUrl(reqOrUrl);
   const params = new URLSearchParams({ auth_token: token });
   return `${base}/?${params.toString()}`;
 }
 
-export function buildFrontendErrorRedirect(message, req) {
-  const base = req ? getRequestBaseUrl(req) : getAppBaseUrl();
+export function buildFrontendErrorRedirect(message, reqOrUrl) {
+  const base = typeof reqOrUrl === "string" ? reqOrUrl.replace(/\/$/, "") : reqOrUrl ? getRequestBaseUrl(reqOrUrl) : getAppBaseUrl();
   const params = new URLSearchParams({ auth_error: message });
   return `${base}/?${params.toString()}`;
 }

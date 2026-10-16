@@ -2,26 +2,47 @@ import { randomBytes, pbkdf2Sync, timingSafeEqual, createHash } from "node:crypt
 import { MongoClient } from "mongodb";
 import { loadLocalEnv } from "./env.js";
 
-let clientPromise;
+let clientPromise = null;
+let fallbackStoreInstance = null;
+let lastMongoErrorTime = 0;
+const MONGO_RETRY_INTERVAL_MS = 30_000;
 
 export async function getAuthDb() {
   loadLocalEnv();
 
   const uri = process.env.MONGODB_URI || process.env.MONGO_URL;
-  if (!uri) {
-    throw new Error("MONGODB_URI or MONGO_URL is not configured.");
+  const now = Date.now();
+
+  if (uri && (now - lastMongoErrorTime > MONGO_RETRY_INTERVAL_MS || clientPromise)) {
+    try {
+      if (!clientPromise) {
+        const client = new MongoClient(uri, {
+          serverSelectionTimeoutMS: 3000,
+          connectTimeoutMS: 3000
+        });
+        clientPromise = client.connect();
+      }
+
+      const client = await clientPromise;
+      const dbName = databaseNameFromUri(uri) || "ai-software-compiler";
+      const db = client.db(dbName);
+      await ensureIndexes(db).catch(() => {});
+      return db;
+    } catch (err) {
+      lastMongoErrorTime = Date.now();
+      clientPromise = null; // Allow retry on next cooldown interval if network recovers
+      console.warn(`[auth-db] MongoDB connection failed: ${err.message}. Operating in resilient fallback mode.`);
+    }
+  } else if (!uri) {
+    if (!fallbackStoreInstance) {
+      console.warn("[auth-db] MONGODB_URI not configured. Operating in resilient fallback mode.");
+    }
   }
 
-  if (!clientPromise) {
-    const client = new MongoClient(uri);
-    clientPromise = client.connect();
+  if (!fallbackStoreInstance) {
+    fallbackStoreInstance = createFallbackAuthDb();
   }
-
-  const client = await clientPromise;
-  const dbName = databaseNameFromUri(uri) || "ai-software-compiler";
-  const db = client.db(dbName);
-  await ensureIndexes(db);
-  return db;
+  return fallbackStoreInstance;
 }
 
 export function hashPassword(password) {
@@ -53,6 +74,7 @@ export function hashToken(token) {
 }
 
 export function publicUser(user) {
+  if (!user) return null;
   return {
     id: String(user._id),
     name: user.name,
@@ -162,4 +184,111 @@ function databaseNameFromUri(uri) {
   } catch {
     return null;
   }
+}
+
+/** Resilient fallback auth database implementation when MongoDB is unreachable */
+function createFallbackAuthDb() {
+  const users = [];
+
+  function matches(user, filter) {
+    if (!filter || Object.keys(filter).length === 0) return true;
+    if (filter.$or && Array.isArray(filter.$or)) {
+      return filter.$or.some((sub) => matches(user, sub));
+    }
+    for (const [key, val] of Object.entries(filter)) {
+      if (key === "_id") {
+        if (String(user._id) !== String(val)) return false;
+      } else if (key === "email") {
+        if (String(user.email).toLowerCase() !== String(val).toLowerCase()) return false;
+      } else if (key === "sessions.tokenHash") {
+        if (!user.sessions?.some((s) => s.tokenHash === val)) return false;
+      } else if (key === "sessions" && val?.$elemMatch) {
+        const matched = user.sessions?.some((s) => {
+          if (val.$elemMatch.tokenHash && s.tokenHash !== val.$elemMatch.tokenHash) return false;
+          if (val.$elemMatch.expiresAt?.$gt && !(new Date(s.expiresAt) > val.$elemMatch.expiresAt.$gt)) return false;
+          return true;
+        });
+        if (!matched) return false;
+      } else if (key === "providers" && val?.$elemMatch) {
+        const matched = user.providers?.some(
+          (p) => p.provider === val.$elemMatch.provider && String(p.providerId) === String(val.$elemMatch.providerId)
+        );
+        if (!matched) return false;
+      } else if (user[key] !== val) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function applyUpdate(user, update) {
+    if (update.$set) {
+      Object.assign(user, update.$set);
+    }
+    if (update.$push) {
+      for (const [field, item] of Object.entries(update.$push)) {
+        user[field] = user[field] || [];
+        user[field].push(item);
+      }
+    }
+    if (update.$pull) {
+      for (const [field, filter] of Object.entries(update.$pull)) {
+        if (Array.isArray(user[field])) {
+          user[field] = user[field].filter((entry) => {
+            if (filter.tokenHash && entry.tokenHash === filter.tokenHash) return false;
+            return true;
+          });
+        }
+      }
+    }
+    if (update.$addToSet) {
+      for (const [field, item] of Object.entries(update.$addToSet)) {
+        user[field] = user[field] || [];
+        const exists = user[field].some(
+          (entry) => JSON.stringify(entry) === JSON.stringify(item)
+        );
+        if (!exists) user[field].push(item);
+      }
+    }
+    user.updatedAt = new Date();
+  }
+
+  const usersCollection = {
+    async insertOne(doc) {
+      const email = String(doc.email || "").toLowerCase();
+      if (email && users.some((u) => u.email === email)) {
+        const error = new Error("Duplicate email error");
+        error.code = 11000;
+        throw error;
+      }
+      const cloned = JSON.parse(JSON.stringify(doc));
+      cloned._id = doc._id || `user_${randomBytes(12).toString("hex")}`;
+      users.push(cloned);
+      return { insertedId: cloned._id };
+    },
+    async findOne(filter) {
+      const found = users.find((u) => matches(u, filter));
+      return found ? JSON.parse(JSON.stringify(found)) : null;
+    },
+    async updateOne(filter, update) {
+      const found = users.find((u) => matches(u, filter));
+      if (!found) return { matchedCount: 0, modifiedCount: 0 };
+      applyUpdate(found, update);
+      return { matchedCount: 1, modifiedCount: 1 };
+    },
+    async createIndex() {
+      return Promise.resolve();
+    },
+    async countDocuments(filter = {}) {
+      return users.filter((u) => matches(u, filter)).length;
+    }
+  };
+
+  return {
+    databaseName: "fallback-memory-auth",
+    collection(name) {
+      if (name === "users") return usersCollection;
+      return usersCollection;
+    }
+  };
 }
