@@ -78,7 +78,17 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
   }
 
   try {
-    const { generatedBundle, usedModel } = await requestGeminiBundle(prompt, deterministic, apiKey);
+    let generatedBundle;
+    let usedModel;
+    let malformedOutputFallback = false;
+    try {
+      ({ generatedBundle, usedModel } = await requestGeminiBundle(prompt, deterministic, apiKey));
+    } catch (error) {
+      if (!error?.invalidJson) throw error;
+      generatedBundle = { intent: deterministic.intent, design: deterministic.design, schemas: deterministic.schemas };
+      usedModel = "deterministic-fallback";
+      malformedOutputFallback = true;
+    }
 
     if (!generatedBundle) throw new Error("Gemini returned no blueprint.");
     const validation = validateSchemas(generatedBundle);
@@ -107,13 +117,14 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
         latencyMs: Date.now() - startedAt,
         stageTimings: deterministic.metrics.stageTimings,
         retries: repair.applied.length,
-        deterministic: false,
-        costTier: "gemini-live"
+        deterministic: malformedOutputFallback,
+        costTier: malformedOutputFallback ? "local-fallback" : "gemini-live"
       },
       provider: {
-        mode: "gemini-live",
+        mode: malformedOutputFallback ? "local-fallback" : "gemini-live",
         model: usedModel,
-        fallbackUsed: usedModel !== GEMINI_MODEL
+        fallbackUsed: malformedOutputFallback || usedModel !== GEMINI_MODEL,
+        ...(malformedOutputFallback ? { reason: "Gemini returned invalid JSON from all available models; the local compiler produced this blueprint." } : {})
       }
     };
   } catch (error) {
@@ -125,20 +136,36 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
 }
 
 async function requestGeminiBundle(prompt, seed, apiKey) {
-  const { payload, model } = await requestGeminiWithFallback({
-    apiKey,
-    models: [GEMINI_MODEL, ...GEMINI_FALLBACK_MODELS],
-    timeoutMs: GEMINI_TIMEOUT_MS,
-    body: {
-      system_instruction: { parts: [{ text: "You are one stage inside a software compiler. Return only valid JSON matching the requested object shape." }] },
-      contents: [{ role: "user", parts: [{ text: buildCompilerPrompt(prompt, seed) }] }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 8192, responseMimeType: "application/json" }
+  const models = [...new Set([GEMINI_MODEL, ...GEMINI_FALLBACK_MODELS])];
+  const deadline = Date.now() + 55_000;
+  let invalidJsonError;
+
+  for (const model of models) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs < 1_000) break;
+    const { payload } = await requestGeminiWithFallback({
+      apiKey,
+      models: [model],
+      timeoutMs: Math.min(GEMINI_TIMEOUT_MS, remainingMs),
+      maxDurationMs: remainingMs,
+      body: {
+        system_instruction: { parts: [{ text: "You are one stage inside a software compiler. Return one complete, valid JSON object only. Never truncate or add markdown. Match the requested object shape exactly." }] },
+        contents: [{ role: "user", parts: [{ text: buildCompilerPrompt(prompt, seed) }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 8192, responseMimeType: "application/json" }
+      }
+    });
+    const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
+    try {
+      if (!text.trim()) throw new Error("Gemini returned an empty completion.");
+      return { generatedBundle: normalizeBundle(parseJson(text), seed), usedModel: model };
+    } catch (error) {
+      invalidJsonError = error;
     }
-  });
-  const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
-  if (!text.trim()) throw new Error("Gemini returned an empty completion.");
-  const parsed = parseJson(text);
-  return { generatedBundle: normalizeBundle(parsed, seed), usedModel: model };
+  }
+
+  const error = new Error(`Gemini returned invalid JSON across available models: ${invalidJsonError?.message || "empty completion"}`);
+  error.invalidJson = true;
+  throw error;
 }
 
 function formatResponse(output) {
@@ -185,13 +212,27 @@ User prompt:
 ${prompt}`;
 }
 
-function parseJson(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("Gemini did not return JSON.");
-    return JSON.parse(match[0]);
+export function parseJson(text) {
+  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  try { return JSON.parse(trimmed); } catch (directError) {
+    const start = trimmed.indexOf("{");
+    if (start < 0) throw new Error("Gemini did not return a JSON object.");
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = start; index < trimmed.length; index += 1) {
+      const character = trimmed[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') inString = false;
+        continue;
+      }
+      if (character === '"') inString = true;
+      else if (character === "{") depth += 1;
+      else if (character === "}" && --depth === 0) return JSON.parse(trimmed.slice(start, index + 1));
+    }
+    throw directError;
   }
 }
 
