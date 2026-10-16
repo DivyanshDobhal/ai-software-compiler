@@ -135,16 +135,12 @@ test("model failure returns a labeled deterministic fallback", async () => {
   assert.match(response.body.answer, /local knowledge search/i);
 });
 
-test("chat UI exposes accessible launcher, modes, suggestions, and retry controls", () => {
-  const source = readFileSync(join(process.cwd(), "src/learning-assistant.jsx"), "utf8");
-  assert.match(source, /aria-label="Need help\? Ask AI"/);
-  assert.match(source, /role="dialog"/);
-  assert.match(source, /Guided learning mode/);
-  assert.match(source, /Escape/);
-  assert.match(source, /Clear chat/);
-  assert.match(source, /Retry/);
-  assert.match(source, /How do I create my first project\?/);
-  assert.match(source, /Explain code step by step/);
+test("the product mounts the supplied landing page and compiler workspace without a chat overlay", () => {
+  const source = readFileSync(join(process.cwd(), "src/main.jsx"), "utf8");
+  assert.match(source, /<LandingExperience/);
+  assert.match(source, /<Dashboard/);
+  assert.doesNotMatch(source, /LearningAssistant/);
+  assert.doesNotMatch(source, /learning-assistant\.jsx/);
 });
 
 test("evaluation set includes at least 30 valid cases across required risk classes", () => {

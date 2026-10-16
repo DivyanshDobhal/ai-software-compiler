@@ -2,7 +2,6 @@ import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AnimatePresence, motion } from "motion/react";
 import LandingExperience from "./landing.jsx";
-import LearningAssistant from "./learning-assistant.jsx";
 import {
   Activity,
   AlertCircle,
@@ -148,7 +147,6 @@ function App() {
     try { return JSON.parse(localStorage.getItem("compiler_experience_profile") || "null"); } catch { return null; }
   });
   const [authNotice, setAuthNotice] = useState("");
-  const [assistantSection, setAssistantSection] = useState("landing");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -231,7 +229,6 @@ function App() {
     }
     setShowAuth(false);
     setShowConsole(true);
-    setAssistantSection("dashboard");
   }
 
   function openSignIn(mode = "login") {
@@ -243,7 +240,6 @@ function App() {
     setDraftPrompt(prompt || "");
     if (user && token) {
       setShowConsole(true);
-      setAssistantSection("dashboard");
       return;
     }
     openSignIn("register");
@@ -308,7 +304,7 @@ function App() {
                 transition={{ duration: 0.4 }}
                 className="w-full"
               >
-                <Dashboard user={user} token={token} onLogout={handleLogout} initialPrompt={draftPrompt} onChangeAudience={requestExperienceSetup} experienceProfile={experienceProfile} onContextChange={setAssistantSection} />
+                <Dashboard user={user} token={token} onLogout={handleLogout} initialPrompt={draftPrompt} onChangeAudience={requestExperienceSetup} experienceProfile={experienceProfile} />
               </motion.div>
             ) : isPublicLanding ? (
               <motion.div
@@ -345,7 +341,6 @@ function App() {
 
         {/* Keep the full marketing footer on the public landing, and the compact app shell in the workspace. */}
       </div>
-      <LearningAssistant section={showConsole ? assistantSection : "landing"} profile={experienceProfile} />
     </div>
   );
 }
@@ -708,7 +703,7 @@ function StatusMessage({ message }) {
   );
 }
 
-function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience, experienceProfile, onContextChange }) {
+function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience, experienceProfile }) {
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [prompt, setPrompt] = useState(() => initialPrompt || examples[0]);
@@ -786,7 +781,6 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
   // Scroll to section based on sidebar clicks
   function navigateToSection(label) {
     setActiveTab(label);
-    onContextChange?.(label.toLowerCase().replaceAll(" ", "-"));
     setMobileNavOpen(false);
     const element = document.getElementById(label.toLowerCase().replace(" ", "-"));
     if (element) {
