@@ -2550,7 +2550,7 @@ async function apiRequest(path, options = {}) {
         "Compilation timed out. Open Settings → Local Compiler for instant results, or use a shorter prompt."
       );
     }
-    throw new Error(data.error || data.detail || `Request failed with ${response.status}`);
+    throw new Error(data.detail || data.error || `Request failed with ${response.status}`);
   }
   return data;
 }
