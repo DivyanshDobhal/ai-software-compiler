@@ -58,7 +58,9 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
     };
   }
 
-  const apiKey = customApiKey || process.env.NVIDIA_API_KEY;
+  // Prefer the deployment secret so stale browser-local credentials cannot
+  // silently override the configured production key.
+  const apiKey = process.env.NVIDIA_API_KEY || customApiKey;
 
   if (!apiKey) {
     return {
@@ -109,15 +111,8 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
       }
     };
   } catch (error) {
-    return {
-      ...deterministic,
-      provider: {
-        mode: "local-fallback",
-        model: "deterministic",
-        fallbackUsed: true,
-        reason: error instanceof Error ? error.message : "NVIDIA request failed"
-      }
-    };
+    const message = error instanceof Error ? error.message : "NVIDIA request failed";
+    throw new Error(message.replaceAll(apiKey, "[REDACTED]"));
   }
 }
 

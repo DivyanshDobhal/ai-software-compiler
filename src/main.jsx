@@ -1963,7 +1963,7 @@ function SettingsModal({ compileMode, setCompileMode, nvidiaApiKey, setNvidiaApi
                 />
               </div>
               <p className="text-[9px] text-slate-500 leading-relaxed uppercase">
-                Your API key is securely persisted locally inside your browser's sandbox. It is transmitted directly to the serverless Vercel endpoints to generate structurally sound schemas.
+                The Vercel server key is used when configured. This optional browser key is only used when no server key is available.
               </p>
             </motion.div>
           )}
