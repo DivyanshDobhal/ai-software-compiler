@@ -6,9 +6,11 @@ import {
 } from "../src/compiler.js";
 import { findUserByToken } from "../src/auth-db.js";
 import { bearerToken } from "./auth.js";
+import { requestGeminiWithFallback } from "../src/gemini-client.js";
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 45_000);
+const GEMINI_FALLBACK_MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"];
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -36,9 +38,12 @@ export default async function handler(req, res) {
     const output = await compilePrompt(prompt, customApiKey, compileMode);
     return res.status(200).json(formatResponse(output));
   } catch (error) {
-    return res.status(500).json({
+    const status = error?.status === 429 || [408, 500, 502, 503, 504].includes(error?.status) ? 503 : 500;
+    return res.status(status).json({
       error: "Compilation failed",
-      detail: error instanceof Error ? error.message : "Unknown error"
+      detail: status === 503
+        ? "Gemini is temporarily busy. The compiler retried and tried alternate models; please retry shortly or switch to Local Compiler in Settings."
+        : error instanceof Error ? error.message : "Unknown error"
     });
   }
 }
@@ -73,21 +78,7 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
   }
 
   try {
-    const modelCandidates = [...new Set([GEMINI_MODEL, "gemini-3.6-flash", "gemini-3.5-flash-lite"])]
-      .filter((model) => Boolean(model));
-    let generatedBundle;
-    let usedModel;
-
-    for (let index = 0; index < modelCandidates.length; index += 1) {
-      const model = modelCandidates[index];
-      try {
-        generatedBundle = await requestGeminiBundle(prompt, deterministic, apiKey, model);
-        usedModel = model;
-        break;
-      } catch (error) {
-        if (error?.status !== 503 || index === modelCandidates.length - 1) throw error;
-      }
-    }
+    const { generatedBundle, usedModel } = await requestGeminiBundle(prompt, deterministic, apiKey);
 
     if (!generatedBundle) throw new Error("Gemini returned no blueprint.");
     const validation = validateSchemas(generatedBundle);
@@ -127,37 +118,27 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gemini request failed";
-    throw new Error(message.replaceAll(apiKey, "[REDACTED]"));
+    const safeError = new Error(message.replaceAll(apiKey, "[REDACTED]"));
+    if (error?.status) safeError.status = error.status;
+    throw safeError;
   }
 }
 
-async function requestGeminiBundle(prompt, seed, apiKey, model) {
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey
-    },
-    body: JSON.stringify({
+async function requestGeminiBundle(prompt, seed, apiKey) {
+  const { payload, model } = await requestGeminiWithFallback({
+    apiKey,
+    models: [GEMINI_MODEL, ...GEMINI_FALLBACK_MODELS],
+    timeoutMs: GEMINI_TIMEOUT_MS,
+    body: {
       system_instruction: { parts: [{ text: "You are one stage inside a software compiler. Return only valid JSON matching the requested object shape." }] },
       contents: [{ role: "user", parts: [{ text: buildCompilerPrompt(prompt, seed) }] }],
       generationConfig: { temperature: 0.1, maxOutputTokens: 8192, responseMimeType: "application/json" }
-    }),
-    signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS)
+    }
   });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    const error = new Error(`Gemini ${response.status}: ${detail.slice(0, 240)}`);
-    error.status = response.status;
-    throw error;
-  }
-
-  const payload = await response.json();
   const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
   if (!text.trim()) throw new Error("Gemini returned an empty completion.");
   const parsed = parseJson(text);
-  return normalizeBundle(parsed, seed);
+  return { generatedBundle: normalizeBundle(parsed, seed), usedModel: model };
 }
 
 function formatResponse(output) {
