@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ExperienceOnboarding } from "./landing.jsx";
 import LearningAssistantWidget from "./learning-assistant-widget.jsx";
+import { containsLikelySecret, createWorkspaceFiles, diffText } from "./workspace.js";
 import {
   Activity,
   AlertCircle,
@@ -40,8 +41,14 @@ import {
   Eye,
   FileCode,
   Download,
+  FileSearch,
+  GitCompare,
+  Save,
+  Undo2,
   AlertTriangle,
   RefreshCw,
+  Monitor,
+  Smartphone,
   Terminal,
   Music2
 } from "lucide-react";
@@ -816,6 +823,16 @@ function Dashboard({ user, token, onLogout, onAuthRequired, onChangeAudience, ex
             <BlueprintSchemasConsole output={output} />
           </div>
 
+          <div id="code-workspace">
+            <CodeWorkspace
+              key={user?.id || "guest"}
+              output={output}
+              user={user}
+              token={token}
+              onAuthRequired={onAuthRequired}
+            />
+          </div>
+
           <div className="dashboard-panel-grid grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* Section 4: Symmetrical Systems HUD */}
             <div id="system-design" className="lg:col-span-8">
@@ -1003,6 +1020,7 @@ function AIOSSidebar({ expanded, setExpanded, activeTab, onNavigate, mobileOpen 
   const sidebarItems = [
     { icon: BarChart3, label: "Dashboard", id: "dashboard" },
     { icon: Blocks, label: "Projects", id: "projects" },
+    { icon: Code2, label: "Code Workspace", id: "code-workspace" },
     { icon: Cpu, label: "Intent Extraction", id: "intent-extraction" },
     { icon: Layers3, label: "System Design", id: "system-design" },
     { icon: Database, label: "Schema Generator", id: "schema-generator" },
@@ -1578,7 +1596,7 @@ function ValidationRadar({ output }) {
           {summaries.map((item) => <div className="validation-summary-row" key={item.label}><span>{item.label}</span><strong className={item.tone}>{item.value}</strong></div>)}
           {errors.length > 0 && <div className="validation-issues"><strong>Issues to review</strong>{errors.slice(0, 3).map((error, index) => <p key={`${index}-${String(error).slice(0, 24)}`}>{typeof error === "string" ? error : error.message || JSON.stringify(error)}</p>)}</div>}
         </div>
-      ) : <div className="validation-empty-state">Compile an idea to see schema and runtime validation details.</div>}
+      ) : <div className="validation-empty-state"><span className="validation-empty-icon"><ShieldCheck size={18} /></span><div><strong>Ready when you are</strong><p>Compile an idea to see schema checks, runtime results, and any issues to review.</p></div></div>}
     </section>
   );
 }
@@ -1608,7 +1626,7 @@ function RuntimePreview({ output, setPreviewPage }) {
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3, duration: 0.5 }}
-      className="space-y-4 text-left"
+      className="runtime-preview-section space-y-4 text-left"
     >
       <div className="flex items-center justify-between">
         <div>
@@ -1757,6 +1775,182 @@ function RecentProjects({ output, onCompilePrompt }) {
   );
 }
 
+function CodeWorkspace({ output, user, token, onAuthRequired }) {
+  const storageKey = `compiler_workspace_v1_${user?.id || "guest"}`;
+  const [workspace, setWorkspace] = useState(() => readWorkspace(storageKey));
+  const [selectedPath, setSelectedPath] = useState("");
+  const [fileQuery, setFileQuery] = useState("");
+  const [instruction, setInstruction] = useState("");
+  const [proposal, setProposal] = useState(null);
+  const [showDiff, setShowDiff] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [checks, setChecks] = useState(null);
+  const editorScrollRef = React.useRef(null);
+  const fingerprint = useMemo(() => output ? JSON.stringify([output.input, output.intent?.app_name, output.schemas]) : "", [output]);
+
+  useEffect(() => {
+    setWorkspace(readWorkspace(storageKey));
+    setSelectedPath("");
+    setProposal(null);
+    setNotice("");
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!output?.schemas) return;
+    setWorkspace((current) => {
+      if (current.fingerprint === fingerprint && current.files.length) return current;
+      const files = createWorkspaceFiles(output);
+      return { fingerprint, files, savedFiles: files.map((file) => ({ ...file })), versions: [] };
+    });
+    setSelectedPath("");
+    setProposal(null);
+  }, [fingerprint]);
+
+  const files = workspace.files || [];
+  const selectedFile = files.find((file) => file.path === selectedPath) || files[0] || null;
+  const savedFile = selectedFile && (workspace.savedFiles || []).find((file) => file.path === selectedFile.path);
+  const dirty = Boolean(selectedFile && selectedFile.content !== savedFile?.content);
+  const visibleFiles = files.filter((file) => `${file.path} ${file.content}`.toLowerCase().includes(fileQuery.trim().toLowerCase()));
+  const credentialDetected = containsLikelySecret(selectedFile?.content);
+  const diffRows = proposal && selectedFile ? diffText(selectedFile.content, proposal.content) : [];
+
+  function updateContent(content) {
+    setWorkspace((current) => ({ ...current, files: current.files.map((file) => file.path === selectedFile.path ? { ...file, content } : file) }));
+    setProposal(null);
+    setNotice("");
+  }
+
+  function saveSnapshot() {
+    const now = new Date();
+    const version = { id: `${now.getTime()}`, label: `Snapshot ${new Date().toLocaleString()}`, files: files.map((file) => ({ ...file })) };
+    const next = { ...workspace, fingerprint, savedFiles: files.map((file) => ({ ...file })), versions: [version, ...(workspace.versions || [])].slice(0, 15) };
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(next));
+      setWorkspace(next);
+      setNotice("Saved to version history on this device.");
+    } catch {
+      setNotice("Could not save this workspace in browser storage.");
+    }
+  }
+
+  function restoreVersion(version) {
+    const restored = version.files.map((file) => ({ ...file }));
+    const now = new Date();
+    const next = { ...workspace, files: restored, savedFiles: restored.map((file) => ({ ...file })), versions: [{ id: `${now.getTime()}`, label: `Restored · ${now.toLocaleString()}`, files: restored }, ...(workspace.versions || [])].slice(0, 15) };
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(next));
+      setWorkspace(next);
+      setSelectedPath(selectedFile?.path || "");
+      setNotice("Version restored. A restore point was added to history.");
+    } catch { setNotice("Could not restore this version in browser storage."); }
+  }
+
+  async function requestProposal() {
+    if (!user || !token) { onAuthRequired?.("login"); return; }
+    if (!selectedFile || !instruction.trim() || credentialDetected) return;
+    setBusy(true);
+    setProposal(null);
+    setNotice("");
+    try {
+      const data = await apiRequest("/api/workspace", { method: "POST", token, body: JSON.stringify({ path: selectedFile.path, content: selectedFile.content, instruction: instruction.trim() }) });
+      setProposal(data.proposal);
+      setShowDiff(true);
+    } catch (error) { setNotice(error.message || "Could not request a code proposal."); }
+    finally { setBusy(false); }
+  }
+
+  function applyProposal() {
+    if (!proposal || !selectedFile) return;
+    updateContent(proposal.content);
+    setProposal(null);
+    setShowDiff(false);
+    setNotice("Proposal applied to the editor. Save a snapshot to keep it in your local version history.");
+  }
+
+  function runStaticChecks() {
+    const results = [];
+    for (const file of files) {
+      if (file.language === "json") {
+        try { JSON.parse(file.content); results.push({ name: `${file.path} parses as JSON`, ok: true }); }
+        catch (error) { results.push({ name: `${file.path} · ${error.message}`, ok: false }); }
+      }
+      if (file.path === "src/App.jsx") results.push({ name: "Starter app has a default export", ok: /export\s+default\s+function\s+App\s*\(/.test(file.content) });
+      if (file.path === "package.json") {
+        let hasBuild = false;
+        try { hasBuild = Boolean(JSON.parse(file.content || "{}").scripts?.build); } catch { /* JSON parse result above reports the syntax error. */ }
+        results.push({ name: "Project manifest includes a build command", ok: hasBuild });
+      }
+      if (containsLikelySecret(file.content)) results.push({ name: `${file.path} may contain a credential`, ok: false });
+    }
+    setChecks(results);
+  }
+
+  return (
+    <section className="workspace-panel" aria-labelledby="code-workspace-heading">
+      <header className="workspace-panel-header">
+        <div><p className="workspace-eyebrow"><Code2 size={14} /> PROJECT FILES</p><h2 id="code-workspace-heading">Code workspace</h2><p>Review the generated starter files, inspect diffs, and keep local restore points.</p></div>
+        <div className="workspace-header-actions">
+          <button type="button" className="workspace-secondary-button" onClick={runStaticChecks} disabled={!files.length}><ShieldCheck size={15} />Run static checks</button>
+          <button type="button" className="workspace-primary-button" onClick={saveSnapshot} disabled={!files.length}><Save size={15} />Save version</button>
+        </div>
+      </header>
+      {!output ? (
+        <div className="workspace-unavailable"><Code2 size={21} /><div><strong>Compile an idea to create workspace files</strong><p>The editor appears here for signed-in and signed-out visitors. Generated files become available after a blueprint exists.</p></div>{!user && <button type="button" onClick={() => onAuthRequired?.("login")}>Sign in to compile</button>}</div>
+      ) : (
+        <>
+          <div className="workspace-toolbar"><label className="workspace-search"><FileSearch size={15} /><input aria-label="Search project files" placeholder="Search files and contents" value={fileQuery} onChange={(event) => setFileQuery(event.target.value)} /></label><span>{files.length} files · {user ? "saved on this device" : "guest workspace"}</span></div>
+          <div className="workspace-editor-layout">
+            <aside className="workspace-file-sidebar" aria-label="Generated project files">
+              <div className="workspace-file-sidebar-title">EXPLORER</div>
+              {visibleFiles.map((file) => <button type="button" className={selectedFile?.path === file.path ? "selected" : ""} key={file.path} onClick={() => { setSelectedPath(file.path); setProposal(null); }}><FileCode size={14} /><span>{file.path}</span>{file.content !== (workspace.savedFiles || []).find((entry) => entry.path === file.path)?.content && <i aria-label="Unsaved changes" />}</button>)}
+              {!visibleFiles.length && <p className="workspace-no-files">No files match.</p>}
+              {(workspace.versions || []).length > 0 && <div className="workspace-history"><div className="workspace-file-sidebar-title">LOCAL HISTORY</div>{workspace.versions.slice(0, 4).map((version) => <button type="button" key={version.id} title={version.label} onClick={() => restoreVersion(version)}><Undo2 size={13} /><span>{version.label}</span></button>)}</div>}
+            </aside>
+            <div className="workspace-editor-main">
+              <div className="workspace-editor-tabs"><span><FileCode size={14} />{selectedFile?.path || "Select a file"}{dirty && <i>●</i>}</span><button type="button" onClick={() => setShowDiff((show) => !show)} disabled={!proposal}><GitCompare size={14} />{showDiff ? "Editor" : "Review diff"}</button></div>
+              {proposal && showDiff ? <div className="workspace-diff-view" aria-label="Proposed file diff">{diffRows.map((row, index) => <div className={`workspace-diff-row ${row.type}`} key={`${index}-${row.type}`}><span>{row.type === "added" ? "+" : row.type === "removed" ? "−" : " "}</span><code>{row.line || " "}</code></div>)}</div> : <div className="workspace-code-editor">
+                <pre className="workspace-highlight" aria-hidden="true"><code dangerouslySetInnerHTML={{ __html: highlightCode(selectedFile?.content || "", selectedFile?.language) }} /></pre>
+                <textarea ref={editorScrollRef} aria-label={`Edit ${selectedFile?.path || "workspace file"}`} spellCheck={false} value={selectedFile?.content || ""} onChange={(event) => updateContent(event.target.value)} onScroll={(event) => { const layer = event.currentTarget.previousElementSibling; if (layer) { layer.scrollTop = event.currentTarget.scrollTop; layer.scrollLeft = event.currentTarget.scrollLeft; } }} />
+              </div>}
+              <div className="workspace-assist">
+                <label htmlFor="workspace-edit-instruction">Ask AI for a change</label>
+                <div className="workspace-assist-controls"><input id="workspace-edit-instruction" maxLength={1200} value={instruction} onChange={(event) => setInstruction(event.target.value)} placeholder="e.g. Add an empty state to the dashboard card" /><button type="button" className="workspace-primary-button" onClick={requestProposal} disabled={busy || !selectedFile || !instruction.trim() || credentialDetected}><Wand2 size={15} />{busy ? "Preparing…" : "Propose edit"}</button></div>
+                <p>AI changes are returned as a diff for your review. They are never applied automatically or executed here.</p>
+                {credentialDetected && <p className="workspace-warning"><AlertTriangle size={14} />A likely credential was detected in this file. Remove it before sending file contents to the AI provider.</p>}
+                {proposal && showDiff && <div className="workspace-proposal-actions"><span>{proposal.summary}</span><button type="button" onClick={() => setShowDiff(false)}>Keep editing</button><button type="button" onClick={applyProposal}>Apply reviewed change</button></div>}
+                {notice && <p className="workspace-notice" role="status">{notice}</p>}
+              </div>
+            </div>
+          </div>
+          {checks && <div className="workspace-check-results" role="status"><div><strong>Static workspace checks</strong><span>Checks file structure and JSON only. Generated source is not executed.</span></div>{checks.map((check, index) => <p key={index} className={check.ok ? "passed" : "failed"}><span>{check.ok ? "✓" : "!"}</span>{check.name}</p>)}</div>}
+          <footer className="workspace-panel-footer"><span>{dirty ? "Unsaved edits" : "No unsaved edits"} · {workspace.versions?.length || 0} local restore points</span><span>History stays in this browser and is separated by account.</span></footer>
+        </>
+      )}
+    </section>
+  );
+}
+
+function readWorkspace(key) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || "null");
+    if (Array.isArray(parsed?.files) && parsed.files.every((file) => typeof file.path === "string" && typeof file.content === "string")) {
+      return { ...parsed, savedFiles: Array.isArray(parsed.savedFiles) ? parsed.savedFiles : [], versions: Array.isArray(parsed.versions) ? parsed.versions.filter((version) => typeof version?.id === "string" && Array.isArray(version.files)).slice(0, 15) : [] };
+    }
+  } catch { /* Ignore invalid or unavailable browser storage. */ }
+  return { fingerprint: "", files: [], savedFiles: [], versions: [] };
+}
+
+function highlightCode(value, language = "") {
+  const escaped = String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const tokenPattern = /(\/\/[^\n]*|#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b(?:const|let|var|function|return|export|default|import|from|if|else|true|false|null|async|await|class|extends)\b|\b\d+(?:\.\d+)?\b)/g;
+  const styleType = language === "json" ? "json" : "code";
+  return escaped.replace(tokenPattern, (token) => {
+    const kind = token.startsWith("//") || token.startsWith("#") ? "comment" : /^(?:[\"'])/.test(token) ? "string" : /^\d/.test(token) ? "number" : "keyword";
+    return `<span class="syntax-${styleType}-${kind}">${token}</span>`;
+  }) + "\n";
+}
+
 function AIActivityTimeline({ output, compiling, currentTask }) {
   const activities = (output?.metrics?.stageTimings || []).map((stage) => ({
     event: stage.name,
@@ -1772,11 +1966,11 @@ function AIActivityTimeline({ output, compiling, currentTask }) {
       className="space-y-4 text-left h-full"
     >
       <div>
-        <h3 className="text-lg font-bold font-mono text-cyan-300 uppercase tracking-widest flex items-center gap-2 mb-1">
+        <h3 className="text-lg font-bold font-sans text-white flex items-center gap-2 mb-1">
           <Activity className="w-4.5 h-4.5 text-cyan-400" />
           Compilation stages
         </h3>
-        <p className="text-[9px] text-slate-500 font-mono uppercase tracking-widest">
+        <p className="text-xs text-slate-400">
           Stage details reported for the latest result.
         </p>
       </div>
@@ -2130,6 +2324,8 @@ function ProfileModal({ user, onClose, onChangeAudience }) {
 function MockPreviewModal({ page, output, onClose }) {
   const [injectedRecordText, setInjectedRecordText] = useState("");
   const [simulatedTable, setSimulatedTable] = useState([]);
+  const [previewMode, setPreviewMode] = useState("desktop");
+  const [previewRevision, setPreviewRevision] = useState(0);
 
   // Generate simulated mock database tables in browser
   const activeTable = useMemo(() => {
@@ -2178,7 +2374,16 @@ function MockPreviewModal({ page, output, onClose }) {
         {/* wireframe mockup view port */}
         <div className="flex-1 overflow-y-auto p-8 bg-slate-950 relative">
           <div className="absolute inset-0 grid-bg-cyber opacity-[0.03] pointer-events-none" />
+          <div className="relative z-10 flex max-w-3xl mx-auto mb-4 items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/80 px-3 py-2">
+            <span className="text-[10px] text-slate-400">Blueprint preview · sample data only</span>
+            <div className="flex items-center gap-1.5">
+              <button type="button" aria-pressed={previewMode === "desktop"} onClick={() => setPreviewMode("desktop")} className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] ${previewMode === "desktop" ? "border-violet-400/40 bg-violet-400/10 text-white" : "border-white/10 text-slate-400"}`}><Monitor size={13} />Desktop</button>
+              <button type="button" aria-pressed={previewMode === "mobile"} onClick={() => setPreviewMode("mobile")} className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] ${previewMode === "mobile" ? "border-violet-400/40 bg-violet-400/10 text-white" : "border-white/10 text-slate-400"}`}><Smartphone size={13} />Mobile</button>
+              <button type="button" aria-label="Reset preview sample data" onClick={() => { setInjectedRecordText(""); setSimulatedTable([]); setPreviewRevision((revision) => revision + 1); }} className="grid size-8 place-items-center rounded-lg border border-white/10 text-slate-300" title={`Reset preview · revision ${previewRevision}`}><RefreshCw size={13} /></button>
+            </div>
+          </div>
           <p className="relative z-10 max-w-3xl mx-auto mb-5 rounded-lg border border-amber-300/15 bg-amber-300/5 px-4 py-3 text-xs leading-relaxed text-amber-100/80">Sandbox preview with sample data generated from this blueprint. Changes here are temporary and do not create or modify a production application.</p>
+          <div className="relative z-10 mx-auto transition-[max-width] duration-200" style={{ width: "100%", maxWidth: previewMode === "mobile" ? 390 : 1080 }}>
 
           {page === "Login Page" ? (
             <div className="max-w-sm w-full mx-auto p-6 rounded-3xl border border-cyan-500/10 bg-slate-900/60 font-mono text-xs text-left space-y-4">
@@ -2294,6 +2499,7 @@ function MockPreviewModal({ page, output, onClose }) {
               </div>
             </div>
           )}
+          </div>
         </div>
       </motion.div>
     </div>

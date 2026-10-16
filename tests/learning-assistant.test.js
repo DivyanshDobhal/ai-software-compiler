@@ -139,6 +139,8 @@ test("the product mounts one compiler workspace before and after authentication"
   const source = readFileSync(join(process.cwd(), "src/main.jsx"), "utf8");
   assert.match(source, /<Dashboard/);
   assert.match(source, /<AuthDialog/);
+  assert.match(source, /<CodeWorkspace[\s\S]*?output=\{output\}/);
+  assert.match(source, /key=\{user\?\.id \|\| "guest"\}/);
   assert.match(source, /onAuthRequired=\{openSignIn\}/);
   assert.match(source, /function AITopNavbar/);
   assert.match(source, /function StudioHero/);
