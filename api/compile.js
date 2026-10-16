@@ -73,7 +73,23 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
   }
 
   try {
-    const generatedBundle = await requestGeminiBundle(prompt, deterministic, apiKey);
+    const modelCandidates = [...new Set([GEMINI_MODEL, "gemini-3.6-flash", "gemini-3.5-flash-lite"])]
+      .filter((model) => Boolean(model));
+    let generatedBundle;
+    let usedModel;
+
+    for (let index = 0; index < modelCandidates.length; index += 1) {
+      const model = modelCandidates[index];
+      try {
+        generatedBundle = await requestGeminiBundle(prompt, deterministic, apiKey, model);
+        usedModel = model;
+        break;
+      } catch (error) {
+        if (error?.status !== 503 || index === modelCandidates.length - 1) throw error;
+      }
+    }
+
+    if (!generatedBundle) throw new Error("Gemini returned no blueprint.");
     const validation = validateSchemas(generatedBundle);
     const repair = repairSchemas(generatedBundle, validation);
     const finalValidation = validateSchemas({
@@ -105,8 +121,8 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
       },
       provider: {
         mode: "gemini-live",
-        model: GEMINI_MODEL,
-        fallbackUsed: false
+        model: usedModel,
+        fallbackUsed: usedModel !== GEMINI_MODEL
       }
     };
   } catch (error) {
@@ -115,8 +131,8 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
   }
 }
 
-async function requestGeminiBundle(prompt, seed, apiKey) {
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`, {
+async function requestGeminiBundle(prompt, seed, apiKey, model) {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -132,7 +148,9 @@ async function requestGeminiBundle(prompt, seed, apiKey) {
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`Gemini ${response.status}: ${detail.slice(0, 240)}`);
+    const error = new Error(`Gemini ${response.status}: ${detail.slice(0, 240)}`);
+    error.status = response.status;
+    throw error;
   }
 
   const payload = await response.json();
