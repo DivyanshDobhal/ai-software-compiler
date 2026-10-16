@@ -154,9 +154,9 @@ function App() {
     const oauthToken = params.get("auth_token");
     const oauthError = params.get("auth_error");
 
-    if (!oauthError && !oauthToken) return;
-
-    window.history.replaceState({}, "", window.location.pathname);
+    if (oauthToken || oauthError) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
 
     if (oauthError) {
       setAuthNotice(oauthError);
@@ -164,10 +164,20 @@ function App() {
       return;
     }
 
-    localStorage.setItem("compiler_auth_token", oauthToken);
-    setToken(oauthToken);
-    apiRequest("/api/auth/me", { token: oauthToken })
+    const initialToken = oauthToken || localStorage.getItem("compiler_auth_token") || "";
+    if (!initialToken) {
+      setRestoring(false);
+      return;
+    }
+
+    if (oauthToken) {
+      localStorage.setItem("compiler_auth_token", oauthToken);
+      setToken(oauthToken);
+    }
+
+    apiRequest("/api/auth/me", { token: initialToken })
       .then((data) => {
+        if (!data?.user) throw new Error("Invalid session data");
         localStorage.setItem("compiler_user", JSON.stringify(data.user));
         setUser(data.user);
         if (data.user.experienceProfile) {
@@ -175,39 +185,18 @@ function App() {
           localStorage.setItem("compiler_experience_profile", JSON.stringify(data.user.experienceProfile));
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.warn("Session restore failed:", err);
         localStorage.removeItem("compiler_auth_token");
         localStorage.removeItem("compiler_user");
         setToken("");
-        setAuthNotice("Social sign-in succeeded but the session could not be restored.");
+        setUser(null);
+        if (oauthToken) {
+          setAuthNotice("Social sign-in succeeded but the session could not be restored.");
+        }
       })
       .finally(() => setRestoring(false));
   }, []);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("auth_token") || params.get("auth_error")) return;
-
-    if (!token) {
-      setRestoring(false);
-      return;
-    }
-
-    apiRequest("/api/auth/me", { token })
-      .then((data) => {
-        setUser(data.user);
-        if (data.user.experienceProfile) {
-          setExperienceProfile(data.user.experienceProfile);
-          localStorage.setItem("compiler_experience_profile", JSON.stringify(data.user.experienceProfile));
-        }
-      })
-      .catch(() => {
-        localStorage.removeItem("compiler_auth_token");
-        localStorage.removeItem("compiler_user");
-        setToken("");
-      })
-      .finally(() => setRestoring(false));
-  }, [token]);
 
   function handleAuthenticated(nextToken, nextUser) {
     localStorage.setItem("compiler_auth_token", nextToken);
