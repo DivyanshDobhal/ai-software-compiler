@@ -19,6 +19,10 @@ export function getAppBaseUrl() {
 
 /** Use the hostname the user actually visited (fixes Vercel deployment URL mismatch). */
 export function getRequestBaseUrl(req) {
+  // OAuth providers require a pre-registered exact redirect URI. Always use
+  // the canonical APP_URL in production, even if a preview hostname was opened.
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+
   const forwardedHost = req?.headers?.["x-forwarded-host"];
   const hostHeader = forwardedHost || req?.headers?.host;
   const proto = String(req?.headers?.["x-forwarded-proto"] || "https")
