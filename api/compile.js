@@ -7,10 +7,12 @@ import {
 import { findUserByToken } from "../src/auth-db.js";
 import { bearerToken } from "./auth.js";
 import { requestGeminiWithFallback } from "../src/gemini-client.js";
+import { requestGroqChat } from "../src/groq-client.js";
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 45_000);
 const GEMINI_FALLBACK_MODELS = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"];
+const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -22,6 +24,8 @@ export default async function handler(req, res) {
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
     const prompt = String(body.prompt || "").trim();
     const compileMode = String(body.compileMode || "gemini").toLowerCase();
+    const requestedProvider = String(body.providerChoice || "auto").toLowerCase();
+    const providerChoice = ["auto", "gemini", "groq", "local"].includes(requestedProvider) ? requestedProvider : "auto";
 
     if (!prompt) {
       return res.status(400).json({ error: "Prompt is required" });
@@ -35,20 +39,20 @@ export default async function handler(req, res) {
     const customApiKey =
       body.geminiApiKey || req.headers["x-gemini-api-key"] || req.headers["X-Gemini-API-Key"] || "";
 
-    const output = await compilePrompt(prompt, customApiKey, compileMode);
+    const output = await compilePrompt(prompt, customApiKey, compileMode, providerChoice);
     return res.status(200).json(formatResponse(output));
   } catch (error) {
     const status = error?.status === 429 || [408, 500, 502, 503, 504].includes(error?.status) ? 503 : 500;
     return res.status(status).json({
       error: "Compilation failed",
       detail: status === 503
-        ? "Gemini is temporarily busy. The compiler retried and tried alternate models; please retry shortly or switch to Local Compiler in Settings."
+        ? "AI providers are temporarily busy. The compiler retried its available models; please retry shortly or choose Local Compiler."
         : error instanceof Error ? error.message : "Unknown error"
     });
   }
 }
 
-async function compilePrompt(prompt, customApiKey, compileMode) {
+export async function compilePrompt(prompt, customApiKey, compileMode, providerChoice = "auto") {
   const startedAt = Date.now();
   const deterministic = compileApplication(prompt, { injectFault: false });
 
@@ -62,32 +66,54 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
     };
   }
 
-  // Prefer the deployment secret so stale browser-local credentials cannot
-  // silently override the configured production key.
   const apiKey = process.env.GEMINI_API_KEY || customApiKey;
-
-  if (!apiKey) {
+  const groqApiKey = process.env.GROQ_API_KEY;
+  const selectedProvider = compileMode === "local" ? "local" : providerChoice;
+  if (selectedProvider === "local") {
     return {
       ...deterministic,
       provider: {
-        mode: "local-fallback",
-        model: "deterministic",
-        reason: "GEMINI_API_KEY is not configured on the server."
+        mode: "deterministic",
+        model: "local-compiler"
       }
+    };
+  }
+
+  if (selectedProvider === "groq" || (selectedProvider === "auto" && !apiKey && groqApiKey)) {
+    if (!groqApiKey) throw new Error("Groq is not configured on the server. Select Automatic, Gemini, or Local.");
+  } else if (!apiKey) {
+    if (selectedProvider === "gemini") throw new Error("Gemini is not configured on the server. Select Automatic, Groq, or Local.");
+    return {
+      ...deterministic,
+      provider: { mode: "local-fallback", model: "deterministic", reason: "No AI provider key is configured on the server." }
     };
   }
 
   try {
     let generatedBundle;
     let usedModel;
-    let malformedOutputFallback = false;
-    try {
-      ({ generatedBundle, usedModel } = await requestGeminiBundle(prompt, deterministic, apiKey));
-    } catch (error) {
-      if (!error?.invalidJson) throw error;
-      generatedBundle = { intent: deterministic.intent, design: deterministic.design, schemas: deterministic.schemas };
-      usedModel = "deterministic-fallback";
-      malformedOutputFallback = true;
+    let usedProvider = selectedProvider === "groq" || (selectedProvider === "auto" && !apiKey) ? "groq" : "gemini-live";
+    let localFallbackReason = "";
+    if (usedProvider === "groq") {
+      ({ generatedBundle, usedModel } = await requestGroqBundle(prompt, deterministic, groqApiKey));
+    } else {
+      try {
+        ({ generatedBundle, usedModel } = await requestGeminiBundle(prompt, deterministic, apiKey));
+      } catch (error) {
+        if (selectedProvider === "auto" && groqApiKey && (error?.invalidJson || isTransientProviderError(error))) {
+        const groqResult = await requestGroqBundle(prompt, deterministic, groqApiKey);
+        generatedBundle = groqResult.generatedBundle;
+        usedModel = groqResult.usedModel;
+        usedProvider = "groq-fallback";
+        } else if (error?.invalidJson) {
+          generatedBundle = { intent: deterministic.intent, design: deterministic.design, schemas: deterministic.schemas };
+          usedModel = "deterministic-fallback";
+          usedProvider = "local-fallback";
+          localFallbackReason = "AI providers returned invalid JSON; the local compiler produced this blueprint.";
+        } else {
+          throw error;
+        }
+      }
     }
 
     if (!generatedBundle) throw new Error("Gemini returned no blueprint.");
@@ -117,19 +143,21 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
         latencyMs: Date.now() - startedAt,
         stageTimings: deterministic.metrics.stageTimings,
         retries: repair.applied.length,
-        deterministic: malformedOutputFallback,
-        costTier: malformedOutputFallback ? "local-fallback" : "gemini-live"
+        deterministic: usedProvider === "local-fallback",
+        costTier: usedProvider === "local-fallback" ? "local-fallback" : usedProvider
       },
       provider: {
-        mode: malformedOutputFallback ? "local-fallback" : "gemini-live",
+        mode: usedProvider,
         model: usedModel,
-        fallbackUsed: malformedOutputFallback || usedModel !== GEMINI_MODEL,
-        ...(malformedOutputFallback ? { reason: "Gemini returned invalid JSON from all available models; the local compiler produced this blueprint." } : {})
+        fallbackUsed: usedProvider !== "gemini-live" || usedModel !== GEMINI_MODEL,
+        ...(localFallbackReason ? { reason: localFallbackReason } : {})
       }
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gemini request failed";
-    const safeError = new Error(message.replaceAll(apiKey, "[REDACTED]"));
+    const safeMessage = [apiKey, process.env.GROQ_API_KEY].filter(Boolean)
+      .reduce((current, secret) => current.replaceAll(secret, "[REDACTED]"), message);
+    const safeError = new Error(safeMessage);
     if (error?.status) safeError.status = error.status;
     throw safeError;
   }
@@ -137,23 +165,31 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
 
 async function requestGeminiBundle(prompt, seed, apiKey) {
   const models = [...new Set([GEMINI_MODEL, ...GEMINI_FALLBACK_MODELS])];
-  const deadline = Date.now() + 55_000;
+  const deadline = Date.now() + 35_000;
   let invalidJsonError;
+  let transientError;
 
   for (const model of models) {
     const remainingMs = deadline - Date.now();
     if (remainingMs < 1_000) break;
-    const { payload } = await requestGeminiWithFallback({
-      apiKey,
-      models: [model],
-      timeoutMs: Math.min(GEMINI_TIMEOUT_MS, remainingMs),
-      maxDurationMs: remainingMs,
-      body: {
-        system_instruction: { parts: [{ text: "You are one stage inside a software compiler. Return one complete, valid JSON object only. Never truncate or add markdown. Match the requested object shape exactly." }] },
-        contents: [{ role: "user", parts: [{ text: buildCompilerPrompt(prompt, seed) }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 8192, responseMimeType: "application/json" }
-      }
-    });
+    let payload;
+    try {
+      ({ payload } = await requestGeminiWithFallback({
+        apiKey,
+        models: [model],
+        timeoutMs: Math.min(GEMINI_TIMEOUT_MS, remainingMs),
+        maxDurationMs: remainingMs,
+        body: {
+          system_instruction: { parts: [{ text: "You are one stage inside a software compiler. Return one complete, valid JSON object only. Never truncate or add markdown. Match the requested object shape exactly." }] },
+          contents: [{ role: "user", parts: [{ text: buildCompilerPrompt(prompt, seed) }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 8192, responseMimeType: "application/json" }
+        }
+      }));
+    } catch (error) {
+      if (!isTransientProviderError(error)) throw error;
+      transientError = error;
+      continue;
+    }
     const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
     try {
       if (!text.trim()) throw new Error("Gemini returned an empty completion.");
@@ -163,9 +199,31 @@ async function requestGeminiBundle(prompt, seed, apiKey) {
     }
   }
 
+  if (transientError) throw transientError;
   const error = new Error(`Gemini returned invalid JSON across available models: ${invalidJsonError?.message || "empty completion"}`);
   error.invalidJson = true;
   throw error;
+}
+
+async function requestGroqBundle(prompt, seed, apiKey) {
+  const response = await requestGroqChat({
+    apiKey,
+    model: GROQ_MODEL,
+    messages: [
+      { role: "system", content: "You are one stage inside a software compiler. Return one complete, valid JSON object only. Never truncate or add markdown. Match the requested object shape exactly." },
+      { role: "user", content: buildCompilerPrompt(prompt, seed) }
+    ],
+    responseFormat: { type: "json_object" },
+    maxTokens: 16_384,
+    timeoutMs: Math.min(GEMINI_TIMEOUT_MS, 20_000)
+  });
+  const text = response.choices?.[0]?.message?.content || "";
+  if (!text.trim()) throw new Error("Groq returned an empty completion.");
+  return { generatedBundle: normalizeBundle(parseJson(text), seed), usedModel: GROQ_MODEL };
+}
+
+function isTransientProviderError(error) {
+  return [408, 429, 500, 502, 503, 504].includes(error?.status) || error?.name === "TimeoutError" || error?.name === "AbortError";
 }
 
 function formatResponse(output) {

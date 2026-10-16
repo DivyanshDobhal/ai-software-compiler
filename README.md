@@ -34,6 +34,10 @@ In the Vercel project → **Settings → Environment Variables**, add:
 | `MONGODB_URI` | Yes (for auth) | MongoDB Atlas connection string |
 | `GEMINI_API_KEY` | Yes (for AI generation) | Google Gemini API key; keep it server-side in Vercel |
 | `GEMINI_MODEL` | No | Gemini model override |
+| `GROQ_API_KEY` | No | Optional server-side failover provider key; keep it in Vercel secrets |
+| `GROQ_MODEL` | No | Groq model override (defaults to `openai/gpt-oss-120b`) |
+
+The dashboard AI model selector offers Automatic (Gemini, then Groq), Gemini, Groq, and Local modes. Automatic is the default and uses the server-side provider keys.
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | For Google sign-in | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | For GitHub sign-in | [GitHub Developer Settings](https://github.com/settings/developers) |
 | `OAUTH_STATE_SECRET` | Yes (for OAuth) | Random server-side secret used to sign OAuth state |

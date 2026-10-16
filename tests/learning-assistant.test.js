@@ -144,6 +144,9 @@ test("the product mounts one compiler workspace before and after authentication"
   assert.match(source, /function StudioHero/);
   assert.match(source, /LearningAssistantWidget/);
   assert.match(source, /learning-assistant-widget\.jsx/);
+  assert.match(source, /compiler-provider-choice/);
+  assert.match(source, /Automatic · Gemini → Groq/);
+  assert.match(source, /Groq · GPT OSS 120B/);
 });
 
 test("evaluation set includes at least 30 valid cases across required risk classes", () => {

@@ -662,6 +662,10 @@ function Dashboard({ user, token, onLogout, onAuthRequired, onChangeAudience, ex
   const [simulatedSpeech, setSimulatedSpeech] = useState(false);
   const [activeTab, setActiveTab] = useState("Dashboard");
   const [compileMode, setCompileMode] = useState(() => localStorage.getItem("compiler_compile_mode") === "local" ? "local" : "gemini");
+  const [providerChoice, setProviderChoice] = useState(() => {
+    const saved = localStorage.getItem("compiler_provider_choice");
+    return saved || (localStorage.getItem("compiler_compile_mode") === "local" ? "local" : "auto");
+  });
   const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem("compiler_gemini_api_key") || "");
   const [profileOpen, setProfileOpen] = useState(false);
   const [backgroundMode, setBackgroundMode] = useState(() => localStorage.getItem("compiler_background_mode") || "animated");
@@ -689,7 +693,7 @@ function Dashboard({ user, token, onLogout, onAuthRequired, onChangeAudience, ex
       const headers = {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(compileMode === "gemini" && geminiApiKey ? { "X-Gemini-API-Key": geminiApiKey } : {})
+        ...(providerChoice !== "groq" && providerChoice !== "local" && geminiApiKey ? { "X-Gemini-API-Key": geminiApiKey } : {})
       };
 
       const data = await apiRequest("/api/compile", {
@@ -698,8 +702,9 @@ function Dashboard({ user, token, onLogout, onAuthRequired, onChangeAudience, ex
         headers,
         body: JSON.stringify({
           prompt,
-          compileMode,
-          geminiApiKey: compileMode === "gemini" ? geminiApiKey : ""
+          compileMode: providerChoice === "local" ? "local" : "gemini",
+          providerChoice,
+          geminiApiKey: providerChoice === "auto" || providerChoice === "gemini" ? geminiApiKey : ""
         })
       });
       setOutput(data);
@@ -786,11 +791,19 @@ function Dashboard({ user, token, onLogout, onAuthRequired, onChangeAudience, ex
               onCompile={compile}
               compiling={compiling}
               error={error}
+              providerChoice={providerChoice}
+              setProviderChoice={(provider) => {
+                setProviderChoice(provider);
+                localStorage.setItem("compiler_provider_choice", provider);
+                const nextMode = provider === "local" ? "local" : "gemini";
+                setCompileMode(nextMode);
+                localStorage.setItem("compiler_compile_mode", nextMode);
+              }}
               speechActive={simulatedSpeech}
               onStartSpeech={startMockSpeech}
             />
           </div>
-          <MetricsGrid output={output} compileMode={compileMode} compilationsThisSession={compilationsThisSession} />
+          <MetricsGrid output={output} compileMode={compileMode} providerChoice={providerChoice} compilationsThisSession={compilationsThisSession} />
           <DashboardQuickActions output={output} onNavigate={navigateToSection} />
 
           {/* Compilation progress and stage timings */}
@@ -850,6 +863,9 @@ function Dashboard({ user, token, onLogout, onAuthRequired, onChangeAudience, ex
             setCompileMode={(mode) => {
               setCompileMode(mode);
               localStorage.setItem("compiler_compile_mode", mode);
+              const provider = mode === "local" ? "local" : "gemini";
+              setProviderChoice(provider);
+              localStorage.setItem("compiler_provider_choice", provider);
             }}
             geminiApiKey={geminiApiKey}
             setGeminiApiKey={(key) => {
@@ -919,12 +935,20 @@ function StudioHero({ user, onNewProjectClick }) {
   );
 }
 
-function MetricsGrid({ output, compileMode, compilationsThisSession }) {
+function MetricsGrid({ output, compileMode, providerChoice, compilationsThisSession }) {
+  const actualProvider = output?.provider?.mode;
+  const providerLabel = actualProvider === "groq" || actualProvider === "groq-fallback"
+    ? "Groq · GPT OSS 120B"
+    : actualProvider === "local-fallback" || actualProvider === "deterministic"
+      ? "Local compiler"
+      : actualProvider === "gemini-live"
+        ? "Google Gemini"
+        : providerChoice === "groq" ? "Groq" : providerChoice === "local" || compileMode === "local" ? "Local" : providerChoice === "gemini" ? "Google Gemini" : "Automatic AI";
   const metrics = [
     { label: "Builds this session", value: compilationsThisSession },
     { label: "Latest validation", value: output ? (output.validation?.errors?.length ? `${output.validation.errors.length} issues` : "Passed") : "Not run" },
     { label: "Runtime preview", value: output ? (output.runtime?.ok ? "Ready" : "Needs review") : "Not run" },
-    { label: "Compiler mode", value: compileMode === "gemini" ? "Google Gemini" : "Local" }
+    { label: "Compiler mode", value: providerLabel }
   ];
 
   return (
@@ -1127,7 +1151,7 @@ function AITopNavbar({ user, onLogout, compiling, currentTask, onProfileClick, o
   </header>;
 }
 
-function AICommandCenter({ prompt, setPrompt, onCompile, compiling, error, speechActive, onStartSpeech }) {
+function AICommandCenter({ prompt, setPrompt, onCompile, compiling, error, providerChoice, setProviderChoice, speechActive, onStartSpeech }) {
   const maxChars = 500;
   const charCount = prompt.length;
 
@@ -1216,7 +1240,24 @@ function AICommandCenter({ prompt, setPrompt, onCompile, compiling, error, speec
               {charCount} / {maxChars} characters
             </span>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto">
+              <label className="flex flex-col items-start gap-1.5 text-xs text-slate-400" htmlFor="compiler-provider-choice">
+                <span>Choose AI model</span>
+                <select
+                  id="compiler-provider-choice"
+                  value={providerChoice}
+                  onChange={(event) => setProviderChoice(event.target.value)}
+                  disabled={compiling || speechActive}
+                  className="min-h-10 w-full rounded-xl border border-white/10 bg-slate-950/80 px-3 text-xs text-slate-200 outline-none focus:border-blue-500 disabled:opacity-50 sm:min-w-64"
+                  aria-label="Choose AI model for compiling"
+                >
+                  <option value="auto">Automatic · Gemini → Groq</option>
+                  <option value="gemini">Google Gemini</option>
+                  <option value="groq">Groq · GPT OSS 120B</option>
+                  <option value="local">Local compiler</option>
+                </select>
+              </label>
+              <div className="flex flex-wrap justify-end gap-3">
               <button
                 type="button"
                 onClick={onStartSpeech}
@@ -1246,6 +1287,7 @@ function AICommandCenter({ prompt, setPrompt, onCompile, compiling, error, speec
                   </>
                 )}
               </motion.button>
+              </div>
             </div>
           </div>
 
