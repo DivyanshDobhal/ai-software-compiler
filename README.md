@@ -32,11 +32,12 @@ In the Vercel project → **Settings → Environment Variables**, add:
 |----------|----------|---------|
 | `APP_URL` | Yes (for OAuth) | Production URL, e.g. `https://ai-software-compiler-seven.vercel.app` |
 | `MONGODB_URI` | Yes (for auth) | MongoDB Atlas connection string |
-| `NVIDIA_API_KEY` | Yes (for AI generation) | NVIDIA API key |
-| `NVIDIA_MODEL` | No | NVIDIA NIM model (default: `meta/llama-3.3-70b-instruct`) |
-| `NVIDIA_API_URL` | No | NVIDIA chat completions endpoint |
+| `GEMINI_API_KEY` | Yes (for AI generation) | Google Gemini API key; keep it server-side in Vercel |
+| `GEMINI_MODEL` | No | Gemini model override |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | For Google sign-in | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | For GitHub sign-in | [GitHub Developer Settings](https://github.com/settings/developers) |
+| `OAUTH_STATE_SECRET` | Yes (for OAuth) | Random server-side secret used to sign OAuth state |
+| `AUTH_TOKEN_TTL_DAYS` | No | Session lifetime (default: 7 days) |
 
 ## AI Learning Assistant knowledge API
 
@@ -46,12 +47,12 @@ The verified knowledge base and server endpoint are available in `data/ai_learni
 
 ### OAuth redirect URLs
 
-Register these callback URLs in Google and GitHub:
+Register these exact callback URLs in the provider consoles (the production host must match `APP_URL`):
 
-- `https://<your-domain>/api/auth/google/callback`
-- `https://<your-domain>/api/auth/github/callback`
+- Google Cloud Console → OAuth client → **Authorized redirect URIs**: `https://ai-software-compiler-seven.vercel.app/api/auth/google/callback`
+- GitHub Developer Settings → OAuth App → **Authorization callback URL**: `https://ai-software-compiler-seven.vercel.app/api/auth/github/callback`
 
-Redeploy after adding variables.
+The Google JavaScript origin is `https://ai-software-compiler-seven.vercel.app`; adding an origin does not register the OAuth callback. Redeploy after changing Vercel environment variables.
 
 ### 3. Deploy
 

@@ -12,6 +12,7 @@ export async function getAuthDb() {
 
   const uri = process.env.MONGODB_URI || process.env.MONGO_URL;
   const now = Date.now();
+  const isProduction = process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
 
   if (uri && (now - lastMongoErrorTime > MONGO_RETRY_INTERVAL_MS || clientPromise)) {
     try {
@@ -31,9 +32,18 @@ export async function getAuthDb() {
     } catch (err) {
       lastMongoErrorTime = Date.now();
       clientPromise = null; // Allow retry on next cooldown interval if network recovers
-      console.warn(`[auth-db] MongoDB connection failed: ${err.message}. Operating in resilient fallback mode.`);
+      if (!isProduction) {
+        console.warn(`[auth-db] MongoDB connection failed: ${err.message}. Using local development fallback mode.`);
+      }
     }
-  } else if (!uri) {
+  }
+
+  if (isProduction) {
+    if (!uri) throw new Error("MONGODB_URI or MONGO_URL is not configured.");
+    throw new Error("MONGODB_URI is configured but the database is currently unavailable. Please try again.");
+  }
+
+  if (!uri) {
     if (!fallbackStoreInstance) {
       console.warn("[auth-db] MONGODB_URI not configured. Operating in resilient fallback mode.");
     }

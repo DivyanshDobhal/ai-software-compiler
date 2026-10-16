@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import LandingExperience from "./landing.jsx";
+import { ExperienceOnboarding } from "./landing.jsx";
 import LearningAssistantWidget from "./learning-assistant-widget.jsx";
 import {
   Activity,
@@ -139,11 +139,9 @@ function App() {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(() => localStorage.getItem("compiler_auth_token") || "");
   const [restoring, setRestoring] = useState(true);
-  const [showConsole, setShowConsole] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState("login");
-  const [draftPrompt, setDraftPrompt] = useState("");
-  const [experienceSetupRequest, setExperienceSetupRequest] = useState(0);
+  const [showExperienceSetup, setShowExperienceSetup] = useState(false);
   const [experienceProfile, setExperienceProfile] = useState(() => {
     try { return JSON.parse(localStorage.getItem("compiler_experience_profile") || "null"); } catch { return null; }
   });
@@ -160,6 +158,7 @@ function App() {
 
     if (oauthError) {
       setAuthNotice(oauthError);
+      setShowAuth(true);
       setRestoring(false);
       return;
     }
@@ -193,6 +192,7 @@ function App() {
         setUser(null);
         if (oauthToken) {
           setAuthNotice("Social sign-in succeeded but the session could not be restored.");
+          setShowAuth(true);
         }
       })
       .finally(() => setRestoring(false));
@@ -217,8 +217,8 @@ function App() {
         localStorage.setItem("compiler_experience_profile", JSON.stringify(savedProfile));
       }).catch(() => {});
     }
+    setAuthNotice("");
     setShowAuth(false);
-    setShowConsole(true);
   }
 
   function openSignIn(mode = "login") {
@@ -226,19 +226,20 @@ function App() {
     setShowAuth(true);
   }
 
-  function beginBuilding(prompt) {
-    setDraftPrompt(prompt || "");
-    if (user && token) {
-      setShowConsole(true);
-      return;
-    }
-    openSignIn("register");
+  function requestExperienceSetup() {
+    setShowExperienceSetup(true);
   }
 
-  function requestExperienceSetup() {
-    setShowConsole(false);
-    setShowAuth(false);
-    setExperienceSetupRequest((current) => current + 1);
+  async function saveExperienceProfile(profile) {
+    localStorage.setItem("compiler_experience_profile", JSON.stringify(profile));
+    setExperienceProfile(profile);
+    if (!user || !token) return;
+    try {
+      const result = await apiRequest("/api/auth/preferences", { method: "PUT", token, body: JSON.stringify({ experienceProfile: profile }) });
+      setExperienceProfile(result.experienceProfile);
+      localStorage.setItem("compiler_experience_profile", JSON.stringify(result.experienceProfile));
+      setUser((current) => current ? { ...current, experienceProfile: result.experienceProfile } : current);
+    } catch { /* Device preferences remain available if account sync is unavailable. */ }
   }
 
   async function handleLogout() {
@@ -249,90 +250,57 @@ function App() {
       localStorage.removeItem("compiler_user");
       setToken("");
       setUser(null);
-      setShowConsole(false);
     }
   }
 
   if (restoring) return <LoadingScreen />;
 
-  const isPublicLanding = !showConsole && !showAuth;
-
   return (
-    <div className="relative w-full min-h-svh overflow-x-hidden flex flex-col items-center font-sans selection:bg-white/20 selection:text-white">
+    <div className="relative w-full min-h-svh overflow-x-hidden font-sans selection:bg-white/20 selection:text-white">
       <div className="studio-backdrop" aria-hidden="true" />
-
-      {/* Main Content Container */}
-      <div className={`relative z-10 w-full ${showConsole ? "max-w-none px-0 py-0" : isPublicLanding ? "max-w-none px-0 py-0" : "max-w-7xl px-4 md:px-8 pt-6 md:pt-8 pb-8"} ${!showConsole && !isPublicLanding ? "flex-1 flex flex-col items-center" : ""}`}>
-        
-        {/* Brand Top Header */}
-        {!showConsole && !isPublicLanding && <header className="w-full flex items-center justify-between mb-8 md:mb-10 select-none">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-glow-cyan">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-lg font-black tracking-widest font-mono uppercase bg-gradient-to-r from-cyan-300 to-blue-300 bg-clip-text text-transparent">
-              AI COMPILER STUDIO
-            </span>
-          </div>
-
-          {user && token && (
-            <div className="flex items-center gap-4">
-              <button type="button" onClick={requestExperienceSetup} className="button-quiet">Personalize experience</button>
-            </div>
-          )}
-        </header>}
-
-        {/* Dynamic Inner Workspace / Upper CTA */}
-        <div className={`${showConsole || isPublicLanding ? "w-full" : "w-full flex-1 flex items-center justify-center mb-8 md:mb-12"}`}>
-          <AnimatePresence mode="wait">
-            {showConsole && user && token ? (
-              <motion.div
-                key="console-view"
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ duration: 0.4 }}
-                className="w-full"
-              >
-                <Dashboard user={user} token={token} onLogout={handleLogout} initialPrompt={draftPrompt} onChangeAudience={requestExperienceSetup} experienceProfile={experienceProfile} />
-              </motion.div>
-            ) : isPublicLanding ? (
-              <motion.div
-                key="public-landing"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="w-full"
-              >
-                <LandingExperience
-                  user={user}
-                  token={token}
-                  experienceProfile={experienceProfile}
-                  onProfileChange={setExperienceProfile}
-                  setupRequest={experienceSetupRequest}
-                  onSignIn={openSignIn}
-                  onStartBuilding={beginBuilding}
-                />
-              </motion.div>
-            ) : (
-              /* Auth console */
-              <motion.div
-                key="auth-view"
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                className="w-full"
-              >
-                <AuthExperience onAuthenticated={handleAuthenticated} initialNotice={authNotice} initialMode={authMode} onBack={() => setShowAuth(false)} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Keep the full marketing footer on the public landing, and the compact app shell in the workspace. */}
-      </div>
+      <Dashboard
+        user={user}
+        token={token}
+        onLogout={handleLogout}
+        onAuthRequired={openSignIn}
+        onChangeAudience={requestExperienceSetup}
+        experienceProfile={experienceProfile}
+      />
+      <AnimatePresence>
+        {showAuth && <AuthDialog
+          mode={authMode}
+          setMode={setAuthMode}
+          onAuthenticated={handleAuthenticated}
+          initialNotice={authNotice}
+          onClose={() => setShowAuth(false)}
+        />}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showExperienceSetup && <ExperienceOnboarding
+          initialProfile={experienceProfile}
+          onSave={saveExperienceProfile}
+          onClose={() => setShowExperienceSetup(false)}
+          onDismiss={() => setShowExperienceSetup(false)}
+        />}
+      </AnimatePresence>
     </div>
   );
+}
+
+function AuthDialog({ mode, setMode, onAuthenticated, initialNotice, onClose }) {
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    const onKeyDown = (event) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => { window.removeEventListener("keydown", onKeyDown); previousFocus?.focus?.(); };
+  }, [onClose]);
+
+  return <motion.div className="studio-auth-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+    <motion.section className="studio-auth-dialog" role="dialog" aria-modal="true" aria-label={mode === "register" ? "Create your account" : "Sign in"} initial={{ opacity: 0, y: 18, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12, scale: .98 }}>
+      <button type="button" className="studio-auth-close" onClick={onClose} aria-label="Close sign in"><X size={19} /></button>
+      <AuthCard mode={mode} setMode={setMode} onAuthenticated={onAuthenticated} initialNotice={initialNotice} />
+    </motion.section>
+  </motion.div>;
 }
 
 function AuthExperience({ onAuthenticated, initialNotice = "", initialMode = "login", onBack }) {
@@ -682,10 +650,9 @@ function StatusMessage({ message }) {
   );
 }
 
-function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience, experienceProfile }) {
-  const [sidebarExpanded, setSidebarExpanded] = useState(true);
+function Dashboard({ user, token, onLogout, onAuthRequired, onChangeAudience, experienceProfile }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [prompt, setPrompt] = useState(() => initialPrompt || "");
+  const [prompt, setPrompt] = useState(() => sessionStorage.getItem("compiler_pending_prompt") || "");
   const [output, setOutput] = useState(null);
   const [compiling, setCompiling] = useState(false);
   const [compilationProgress, setCompilationProgress] = useState(0);
@@ -702,7 +669,17 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
 
   // Compile Trigger with Progress and Task Simulation
   async function compile() {
+    if (!user || !token) {
+      if (prompt.trim()) sessionStorage.setItem("compiler_pending_prompt", prompt);
+      onAuthRequired?.("login");
+      return;
+    }
+    if (!prompt.trim()) {
+      setError("Describe the application you want to build first.");
+      return;
+    }
     setCompiling(true);
+    sessionStorage.removeItem("compiler_pending_prompt");
     setError("");
     setOutput(null);
     setCompilationProgress(0);
@@ -762,7 +739,7 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
   function navigateToSection(label) {
     setActiveTab(label);
     setMobileNavOpen(false);
-    const element = document.getElementById(label.toLowerCase().replace(" ", "-"));
+    const element = document.getElementById(label.toLowerCase().replaceAll(" ", "-"));
     if (element) {
       element.scrollIntoView({ behavior: "smooth", block: "center" });
     }
@@ -774,26 +751,11 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
   return (
     <motion.div
       className="dashboard-workspace relative min-h-screen text-white overflow-x-hidden flex font-sans"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
     >
       <AnimatedBackground mode={backgroundMode} />
 
-      {mobileNavOpen && <button type="button" className="workspace-mobile-scrim lg:hidden" onClick={() => setMobileNavOpen(false)} aria-label="Close workspace navigation" />}
-
-      {/* Glassmorphism Left Sidebar */}
-      <AIOSSidebar
-        expanded={sidebarExpanded}
-        setExpanded={setSidebarExpanded}
-        activeTab={activeTab}
-        onNavigate={navigateToSection}
-        mobileOpen={mobileNavOpen}
-        onClose={() => setMobileNavOpen(false)}
-      />
-
       {/* Main OS Console */}
-      <div className={`dashboard-main flex-1 flex flex-col min-h-screen transition-all duration-300 ${sidebarExpanded ? "lg:ml-64" : "lg:ml-20"} z-10 relative`}>
+      <div className="dashboard-main flex-1 flex flex-col min-h-screen z-10 relative">
         {/* Top Navigation Console */}
         <AITopNavbar
           user={user}
@@ -803,18 +765,19 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
           progress={compilationProgress}
           onProfileClick={() => setProfileOpen(true)}
           onMenuClick={() => setMobileNavOpen((open) => !open)}
+          onNavigate={navigateToSection}
+          onAuthRequired={onAuthRequired}
+          mobileMenuOpen={mobileNavOpen}
         />
 
         {/* Console Workspace Grid */}
         <main className="dashboard-content">
           
           {/* Welcome Header & KPI Metrics Grid */}
-          <WelcomeHeader user={user} onNewProjectClick={() => navigateToSection("dashboard")} />
+          <StudioHero user={user} onNewProjectClick={() => navigateToSection("dashboard")} />
           {experienceProfile?.audience === "student" && experienceProfile?.experience === "beginner" && (
             <div className="beginner-workspace-note"><BookOpen size={16} /><span><strong>New to software terms?</strong> The compiler output is organized into an architecture (how parts connect), schemas (what data is stored), APIs (how parts communicate), and validation (checks for consistency).</span></div>
           )}
-          <MetricsGrid output={output} compileMode={compileMode} compilationsThisSession={compilationsThisSession} />
-
           {/* Section 1: AI Prompt Generator Section */}
           <div id="dashboard">
             <AICommandCenter
@@ -827,6 +790,7 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
               onStartSpeech={startMockSpeech}
             />
           </div>
+          <MetricsGrid output={output} compileMode={compileMode} compilationsThisSession={compilationsThisSession} />
           <DashboardQuickActions output={output} onNavigate={navigateToSection} />
 
           {/* Compilation progress and stage timings */}
@@ -933,34 +897,23 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
 
 /* ================== AI OPERATING SYSTEM COMPONENT LAYOUTS ================== */
 
-function WelcomeHeader({ user, onNewProjectClick }) {
+function StudioHero({ user, onNewProjectClick }) {
   return (
     <motion.div
-      className="dashboard-welcome-card glass-card-saas rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 text-left relative overflow-hidden"
+      id="home"
+      className="dashboard-welcome-card studio-hero text-center relative overflow-hidden"
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
     >
-      <div className="space-y-1 z-10">
-        <p className="dashboard-eyebrow">AI COMPILER STUDIO WORKSPACE</p>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-white font-sans tracking-tight">Welcome to AI Compiler Studio</h1>
-        <p className="text-sm text-slate-400 font-sans">What would you like to build today?</p>
+      <div className="studio-hero-copy">
+        <p className="dashboard-eyebrow">A SIMPLE PLACE TO START BUILDING</p>
+        <h1>Your ideas.<br /><span>Compiled into software.</span></h1>
+        <p>Describe the application you want to build. AI Compiler Studio turns your requirements into architecture, schemas, APIs, and a validated blueprint.</p>
       </div>
-      <div className="flex gap-3 flex-shrink-0 z-10">
-        <button
-          onClick={onNewProjectClick}
-          className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold uppercase tracking-wider transition-all shadow-md cursor-pointer hover:shadow-lg active:scale-99"
-        >
-          <Plus className="w-4 h-4" />
-          New Project
-        </button>
-        <a
-          href="#schema-generator"
-          className="flex items-center gap-2 px-5 py-3 rounded-xl border border-white/10 bg-white/[0.01] hover:bg-white/[0.04] text-slate-300 hover:text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
-        >
-          <FileCode className="w-4 h-4" />
-          Blueprint modules
-        </a>
+      <div className="studio-hero-actions">
+        <button type="button" onClick={onNewProjectClick}><Plus size={16} />New project</button>
+        <a href="https://github.com/DivyanshDobhal/ai-software-compiler#readme" target="_blank" rel="noreferrer"><FileCode size={16} />Documentation</a>
       </div>
     </motion.div>
   );
@@ -1142,7 +1095,7 @@ function AIOSSidebar({ expanded, setExpanded, activeTab, onNavigate, mobileOpen 
   );
 }
 
-function AITopNavbar({ user, onLogout, compiling, currentTask, onProfileClick, onMenuClick }) {
+function AITopNavbar({ user, onLogout, compiling, currentTask, onProfileClick, onMenuClick, onNavigate, onAuthRequired, mobileMenuOpen }) {
   const avatarTheme = localStorage.getItem("profile_avatar_theme") || "indigo";
   const gradients = {
     indigo: "from-blue-500 via-indigo-500 to-purple-600",
@@ -1153,42 +1106,25 @@ function AITopNavbar({ user, onLogout, compiling, currentTask, onProfileClick, o
   };
   const activeGradient = gradients[avatarTheme] || gradients.indigo;
 
-  return (
-    <header className="sticky top-0 z-30 min-h-16 border-b border-white/5 backdrop-blur-xl bg-slate-950/80 flex items-center justify-between gap-4 px-4 md:px-8">
-      <div className="flex min-w-0 items-center gap-3">
-        <button type="button" onClick={onMenuClick} aria-label="Open workspace navigation" className="workspace-mobile-menu lg:hidden"><Menu size={18} /></button>
-        <span className="hidden sm:block text-xs font-semibold text-slate-200">Workspace</span>
-        {compiling && <span className="inline-flex min-w-0 items-center gap-2 text-[10px] text-blue-200"><Loader2 size={13} className="animate-spin" /><span className="truncate">{currentTask}</span></span>}
+  const links = [["Product", "dashboard"], ["Pipeline", "intent-extraction"], ["Blueprint", "schema-generator"]];
+  return <header className="studio-nav-wrap">
+    <nav className="studio-nav" aria-label="Main navigation">
+      <a className="studio-nav-brand" href="#home"><span><Sparkles size={17} /></span>AI Compiler Studio</a>
+      <button type="button" className="studio-nav-toggle" onClick={onMenuClick} aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileMenuOpen}>{mobileMenuOpen ? <X size={19} /> : <Menu size={19} />}</button>
+      <div className={`studio-nav-links ${mobileMenuOpen ? "is-open" : ""}`}>
+        {links.map(([label, target]) => <button type="button" key={target} onClick={() => onNavigate(target === "dashboard" ? "Dashboard" : target.replaceAll("-", " "))}>{label}</button>)}
+        <a href="https://github.com/DivyanshDobhal/ai-software-compiler#readme" target="_blank" rel="noreferrer">Docs</a>
+        {compiling && <span className="studio-nav-status"><Loader2 size={13} className="animate-spin" />{currentTask}</span>}
+        {user ? <>
+          <button type="button" className="studio-nav-account" onClick={onProfileClick}><span className={`studio-avatar bg-gradient-to-br ${activeGradient}`}>{user?.name?.charAt(0).toUpperCase() || "U"}</span><span>{user.name?.split(" ")[0] || "Account"}</span></button>
+          <button type="button" className="studio-nav-cta studio-nav-logout" onClick={onLogout}><LogOut size={15} />Sign out</button>
+        </> : <>
+          <button type="button" className="studio-nav-login" onClick={() => onAuthRequired?.("login")}>Login</button>
+          <button type="button" className="studio-nav-cta" onClick={() => onAuthRequired?.("register")}>Get started</button>
+        </>}
       </div>
-
-      {/* Right: Actions */}
-      <div className="flex items-center gap-2 md:gap-4 ml-auto">
-        {/* Profile Menu */}
-        <button
-          type="button"
-          onClick={onProfileClick}
-          aria-label="Open profile and experience preferences"
-          className="flex items-center gap-3 rounded-lg px-1.5 py-1 cursor-pointer hover:bg-white/5 transition select-none text-left"
-        >
-          <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${activeGradient} flex items-center justify-center text-xs font-bold text-white shadow`}>
-            {user?.name?.charAt(0).toUpperCase() || "O"}
-          </div>
-          <div className="hidden sm:block text-left">
-            <p className="text-xs font-bold text-white font-sans leading-none">{user?.name || "Operator"}</p>
-            <p className="text-[10px] text-slate-400 font-sans tracking-wide mt-0.5">Signed in</p>
-          </div>
-        </button>
-
-        <button
-          onClick={onLogout}
-          className="p-2 hover:bg-rose-500/10 rounded-xl border border-rose-500/10 transition text-rose-400 hover:text-rose-300"
-          title="Sign Out"
-        >
-          <LogOut className="w-4.5 h-4.5" />
-        </button>
-      </div>
-    </header>
-  );
+    </nav>
+  </header>;
 }
 
 function AICommandCenter({ prompt, setPrompt, onCompile, compiling, error, speechActive, onStartSpeech }) {

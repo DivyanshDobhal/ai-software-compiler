@@ -135,12 +135,14 @@ test("model failure returns a labeled deterministic fallback", async () => {
   assert.match(response.body.answer, /local knowledge search/i);
 });
 
-test("the product mounts the landing page, compiler workspace, and learning assistant", () => {
+test("the product mounts one compiler workspace before and after authentication", () => {
   const source = readFileSync(join(process.cwd(), "src/main.jsx"), "utf8");
-  assert.match(source, /<LandingExperience/);
   assert.match(source, /<Dashboard/);
+  assert.match(source, /<AuthDialog/);
+  assert.match(source, /onAuthRequired=\{openSignIn\}/);
+  assert.match(source, /function AITopNavbar/);
+  assert.match(source, /function StudioHero/);
   assert.match(source, /LearningAssistantWidget/);
-  assert.match(readFileSync(join(process.cwd(), "src/landing.jsx"), "utf8"), /<LearningAssistantWidget/);
   assert.match(source, /learning-assistant-widget\.jsx/);
 });
 

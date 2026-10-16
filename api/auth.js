@@ -63,7 +63,7 @@ export default async function handler(req, res) {
     return res.status(404).json({ error: `Auth route '${action || ""}' not found` });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    const status = message.includes("MONGODB_URI") || message.includes("MONGO_URL") ? 503 : 500;
+    const status = /MONGODB_URI|MONGO_URL|database is currently unavailable/i.test(message) ? 503 : 500;
     return res.status(status).json({ error: "Auth request failed", detail: message });
   }
 }
