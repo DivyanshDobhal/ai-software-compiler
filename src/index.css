@@ -591,13 +591,29 @@ body {
 .dashboard-content .dashboard-eyebrow { margin-bottom: 7px; color: #9ca8bd; font-size: 10px; font-weight: 700; letter-spacing: .11em; }
 .dashboard-content > .glass-card-saas { padding: clamp(22px, 3vw, 36px); }
 .dashboard-content > .glass-card-saas h1 { font-size: clamp(25px, 3.1vw, 40px); line-height: 1.12; }
-.dashboard-quick-actions { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 12px; }
+.dashboard-welcome-card { min-height: 152px; border-color: rgba(190,198,222,.13); background: linear-gradient(120deg, rgba(16,21,35,.92), rgba(12,16,28,.78)); box-shadow: 0 18px 54px rgba(2,5,14,.17), inset 0 1px rgba(255,255,255,.035); }
+.dashboard-welcome-card > div:first-child { max-width: 760px; }
+.dashboard-welcome-card > div:last-child { align-items: center; }
+.dashboard-welcome-card button, .dashboard-welcome-card a { min-height: 46px; white-space: nowrap; }
+.dashboard-metrics-grid { gap: 14px; }
+.dashboard-metrics-grid > div { min-height: 112px; padding: 19px 20px; border-color: rgba(190,198,222,.11); background: rgba(13,18,31,.82); }
+.dashboard-metrics-grid > div > div:last-child { margin-top: 13px; }
+.dashboard-metrics-grid > div > div:last-child > span { font-size: clamp(18px, 1.8vw, 26px); }
+.dashboard-command-section > div:first-child p { max-width: 760px; line-height: 1.65; }
+.dashboard-prompt-card { padding: clamp(16px, 2vw, 26px); border-color: rgba(190,198,222,.12); background: rgba(12,17,30,.86); box-shadow: 0 18px 54px rgba(2,5,14,.17), inset 0 1px rgba(255,255,255,.035); }
+.dashboard-prompt-card textarea { min-height: 128px; height: auto; resize: vertical; line-height: 1.65; }
+.dashboard-prompt-card textarea:focus { border-color: rgba(148,176,240,.52); box-shadow: 0 0 0 3px rgba(91,120,197,.1); }
+.dashboard-quick-actions { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; }
 .dashboard-quick-actions button { min-width: 0; min-height: 70px; display: flex; align-items: center; gap: 10px; padding: 14px; border: 1px solid rgba(190,198,222,.12); border-radius: 14px; color: #d5d9e5; background: rgba(17,21,33,.75); text-align: left; transition: border-color 160ms ease, background 160ms ease, transform 160ms ease; }
 .dashboard-quick-actions button:hover:not(:disabled) { transform: translateY(-2px); border-color: rgba(159,174,220,.3); background: rgba(25,30,45,.88); }
 .dashboard-quick-actions button:disabled { opacity: .46; cursor: not-allowed; }
 .dashboard-quick-actions button > svg:first-child { flex: 0 0 auto; color: #b5a8e8; }
 .dashboard-quick-actions button > span { min-width: 0; flex: 1; font-size: 11px; line-height: 1.35; }
 .dashboard-quick-actions button > svg:last-child { flex: 0 0 auto; color: #7e8799; }
+.dashboard-sidebar-footer { min-height: 72px; display: flex; align-items: center; padding: 14px 24px; color: #9ba6ba; }
+.dashboard-sidebar-footer strong, .dashboard-sidebar-footer span { display: block; }
+.dashboard-sidebar-footer strong { color: #c4cbda; font-size: 10px; font-weight: 650; }
+.dashboard-sidebar-footer span { margin-top: 4px; color: #788397; font-size: 9px; }
 .dashboard-content .overflow-x-auto { max-width: 100%; overscroll-behavior-inline: contain; }
 .dashboard-content button,
 .dashboard-content a,
@@ -610,6 +626,7 @@ body {
 
 @container (max-width: 900px) {
   .dashboard-panel-grid > [class*="col-span-"] { grid-column: 1 / -1; }
+  .dashboard-quick-actions { grid-template-columns: repeat(2, minmax(0,1fr)); }
 }
 
 @media (max-width: 767px) {
@@ -632,6 +649,10 @@ body {
   .dashboard-quick-actions { gap: 8px; }
   .dashboard-quick-actions button { min-height: 62px; gap: 8px; padding: 11px; border-radius: 12px; }
   .dashboard-quick-actions button > span { font-size: 10px; }
+  .dashboard-welcome-card { align-items: stretch; gap: 20px; }
+  .dashboard-welcome-card > div:last-child { flex-direction: column; align-items: stretch; }
+  .dashboard-welcome-card button, .dashboard-welcome-card a { justify-content: center; width: 100%; }
+  .dashboard-prompt-card textarea { min-height: 112px; }
 }
 
 /* Landing page editorial system */

@@ -804,7 +804,7 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
       />
 
       {/* Main OS Console */}
-      <div className={`dashboard-main flex-1 flex flex-col min-h-screen transition-all duration-300 ${sidebarExpanded ? "lg:ml-72" : "lg:ml-20"} z-10 relative`}>
+      <div className={`dashboard-main flex-1 flex flex-col min-h-screen transition-all duration-300 ${sidebarExpanded ? "lg:ml-64" : "lg:ml-20"} z-10 relative`}>
         {/* Top Navigation Console */}
         <AITopNavbar
           user={user}
@@ -812,7 +812,6 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
           compiling={compiling}
           currentTask={currentCompileTask}
           progress={compilationProgress}
-          onNavigate={navigateToSection}
           onProfileClick={() => setProfileOpen(true)}
           onMenuClick={() => setMobileNavOpen((open) => !open)}
         />
@@ -948,7 +947,7 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
 function WelcomeHeader({ user, onNewProjectClick }) {
   return (
     <motion.div
-      className="glass-card-saas rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 text-left relative overflow-hidden"
+      className="dashboard-welcome-card glass-card-saas rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 text-left relative overflow-hidden"
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
@@ -971,7 +970,7 @@ function WelcomeHeader({ user, onNewProjectClick }) {
           className="flex items-center gap-2 px-5 py-3 rounded-xl border border-white/10 bg-white/[0.01] hover:bg-white/[0.04] text-slate-300 hover:text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
         >
           <FileCode className="w-4 h-4" />
-          Documentation
+          Blueprint modules
         </a>
       </div>
     </motion.div>
@@ -987,7 +986,7 @@ function MetricsGrid({ output, compileMode, compilationsThisSession }) {
   ];
 
   return (
-    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
+    <div className="dashboard-metrics-grid grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
       {metrics.map((card, i) => (
         <motion.div
           key={card.label}
@@ -1016,7 +1015,6 @@ function MetricsGrid({ output, compileMode, compilationsThisSession }) {
 
 function DashboardQuickActions({ output, onNavigate }) {
   const actions = [
-    { label: "Create new project", icon: Plus, target: "dashboard" },
     { label: "Continue latest result", icon: Blocks, target: "projects", disabled: !output },
     { label: "View architecture", icon: Network, target: "system-design" },
     { label: "Review validation", icon: ShieldCheck, target: "validation-engine" },
@@ -1052,7 +1050,7 @@ function AIOSSidebar({ expanded, setExpanded, activeTab, onNavigate, mobileOpen 
   return (
     <aside
       className={`fixed inset-y-0 left-0 z-50 transition-all duration-300 glass-sidebar-saas flex-col ${mobileOpen ? "flex" : "hidden lg:flex"} ${
-        expanded ? "w-72" : "w-20"
+        expanded ? "w-64" : "w-20"
       }`}
     >
       {/* Brand Header */}
@@ -1141,24 +1139,21 @@ function AIOSSidebar({ expanded, setExpanded, activeTab, onNavigate, mobileOpen 
       </nav>
 
       {/* Footer OS Details */}
-      <div className="p-4 border-t border-white/5">
+      <div className="dashboard-sidebar-footer border-t border-white/5">
         {expanded ? (
-          <div className="text-[10px] font-sans text-slate-500 space-y-1 text-left px-2">
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-slate-400 font-semibold">System Online</span>
-            </div>
-            <div>Version 1.0.0 • Connected</div>
+          <div className="text-left">
+            <strong>Compiler workspace</strong>
+            <span>Plan · validate · preview</span>
           </div>
         ) : (
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mx-auto" />
+          <div className="w-1.5 h-1.5 rounded-full bg-violet-300/70 mx-auto" aria-hidden="true" />
         )}
       </div>
     </aside>
   );
 }
 
-function AITopNavbar({ user, onLogout, compiling, currentTask, onNavigate, onProfileClick, onMenuClick }) {
+function AITopNavbar({ user, onLogout, compiling, currentTask, onProfileClick, onMenuClick }) {
   const avatarTheme = localStorage.getItem("profile_avatar_theme") || "indigo";
   const gradients = {
     indigo: "from-blue-500 via-indigo-500 to-purple-600",
@@ -1179,14 +1174,6 @@ function AITopNavbar({ user, onLogout, compiling, currentTask, onNavigate, onPro
 
       {/* Right: Actions */}
       <div className="flex items-center gap-2 md:gap-4 ml-auto">
-        <button
-          onClick={() => onNavigate("dashboard")}
-          className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-xs font-bold font-sans tracking-wide text-white transition uppercase cursor-pointer"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          New Project
-        </button>
-
         {/* Profile Menu */}
         <button
           type="button"
@@ -1199,7 +1186,7 @@ function AITopNavbar({ user, onLogout, compiling, currentTask, onNavigate, onPro
           </div>
           <div className="hidden sm:block text-left">
             <p className="text-xs font-bold text-white font-sans leading-none">{user?.name || "Operator"}</p>
-            <p className="text-[10px] text-slate-400 font-sans tracking-wide mt-0.5 capitalize">Team Member</p>
+            <p className="text-[10px] text-slate-400 font-sans tracking-wide mt-0.5">Signed in</p>
           </div>
         </button>
 
@@ -1224,7 +1211,7 @@ function AICommandCenter({ prompt, setPrompt, onCompile, compiling, error, speec
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="space-y-4 text-left"
+      className="dashboard-command-section space-y-4 text-left"
     >
       <div>
         <h2 className="text-2xl font-bold tracking-tight text-white font-sans">
@@ -1235,7 +1222,7 @@ function AICommandCenter({ prompt, setPrompt, onCompile, compiling, error, speec
         </p>
       </div>
 
-      <div className="glass-card-saas rounded-2xl p-6 relative overflow-hidden">
+      <div className="dashboard-prompt-card glass-card-saas rounded-2xl p-6 relative overflow-hidden">
         <div className="relative z-10 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -1247,7 +1234,7 @@ function AICommandCenter({ prompt, setPrompt, onCompile, compiling, error, speec
             {speechActive && (
               <span className="flex items-center gap-2 bg-rose-500/10 px-3 py-1 rounded-full text-rose-400 font-sans font-medium text-[10px] animate-pulse border border-rose-500/20">
                 <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
-                Voice Capturing Active
+                Voice prompt demo running
               </span>
             )}
           </div>
