@@ -36,6 +36,7 @@ export default async function handler(req, res) {
     if (req.method === "POST" && action === "register") return register(req, res);
     if (req.method === "POST" && action === "login") return login(req, res);
     if (req.method === "GET" && action === "me") return me(req, res);
+    if (req.method === "PUT" && action === "preferences") return updatePreferences(req, res);
     if (req.method === "POST" && action === "logout") return logout(req, res);
 
     res.setHeader("Allow", "GET, POST");
@@ -168,6 +169,40 @@ async function me(req, res) {
   const user = await findUserByToken(bearerToken(req));
   if (!user) return res.status(401).json({ error: "Not authenticated." });
   return res.status(200).json({ user: publicUser(user) });
+}
+
+async function updatePreferences(req, res) {
+  const user = await findUserByToken(bearerToken(req));
+  if (!user) return res.status(401).json({ error: "Not authenticated." });
+
+  const body = parseBody(req.body);
+  const profile = sanitizeExperienceProfile(body.experienceProfile);
+  if (!profile) return res.status(400).json({ error: "Choose a valid audience before saving preferences." });
+
+  const db = await getAuthDb();
+  await db.collection("users").updateOne(
+    { _id: user._id },
+    { $set: { experienceProfile: profile, updatedAt: new Date() } }
+  );
+  return res.status(200).json({ experienceProfile: profile });
+}
+
+function sanitizeExperienceProfile(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const audiences = new Set(["student", "developer", "founder", "business", "agency", "educator", "exploring"]);
+  const studentStatuses = new Set(["school", "college", "postgraduate", "educator", "not-student"]);
+  const experienceLevels = new Set(["beginner", "learning", "comfortable", "experienced"]);
+  const goals = new Set(["academic", "hackathon", "portfolio", "research", "startup", "learning"]);
+  const audience = String(value.audience || "");
+  if (!audiences.has(audience)) return null;
+
+  return {
+    audience,
+    studentStatus: studentStatuses.has(value.studentStatus) ? value.studentStatus : "",
+    studyField: String(value.studyField || "").trim().slice(0, 80),
+    experience: experienceLevels.has(value.experience) ? value.experience : "",
+    goal: goals.has(value.goal) ? value.goal : ""
+  };
 }
 
 async function logout(req, res) {

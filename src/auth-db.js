@@ -59,6 +59,7 @@ export function publicUser(user) {
     email: user.email,
     role: user.role || "member",
     avatarUrl: user.avatarUrl || null,
+    experienceProfile: user.experienceProfile || null,
     providers: (user.providers || []).map((entry) => entry.provider),
     createdAt: user.createdAt
   };
