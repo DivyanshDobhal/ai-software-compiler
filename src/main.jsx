@@ -715,8 +715,8 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
   const [mockPreviewPage, setMockPreviewPage] = useState(null);
   const [simulatedSpeech, setSimulatedSpeech] = useState(false);
   const [activeTab, setActiveTab] = useState("Dashboard");
-  const [compileMode, setCompileMode] = useState(() => localStorage.getItem("compiler_compile_mode") === "local" ? "local" : "nvidia");
-  const [nvidiaApiKey, setNvidiaApiKey] = useState(() => localStorage.getItem("compiler_nvidia_api_key") || "");
+  const [compileMode, setCompileMode] = useState(() => localStorage.getItem("compiler_compile_mode") === "local" ? "local" : "gemini");
+  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem("compiler_gemini_api_key") || "");
   const [profileOpen, setProfileOpen] = useState(false);
   const [compilationsThisSession, setCompilationsThisSession] = useState(0);
 
@@ -732,7 +732,7 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
       const headers = {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(compileMode === "nvidia" && nvidiaApiKey ? { "X-Nvidia-API-Key": nvidiaApiKey } : {})
+        ...(compileMode === "gemini" && geminiApiKey ? { "X-Gemini-API-Key": geminiApiKey } : {})
       };
 
       const data = await apiRequest("/api/compile", {
@@ -742,7 +742,7 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
         body: JSON.stringify({
           prompt,
           compileMode,
-          nvidiaApiKey: compileMode === "nvidia" ? nvidiaApiKey : ""
+          geminiApiKey: compileMode === "gemini" ? geminiApiKey : ""
         })
       });
       setOutput(data);
@@ -904,10 +904,10 @@ function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience
               setCompileMode(mode);
               localStorage.setItem("compiler_compile_mode", mode);
             }}
-            nvidiaApiKey={nvidiaApiKey}
-            setNvidiaApiKey={(key) => {
-              setNvidiaApiKey(key);
-              localStorage.setItem("compiler_nvidia_api_key", key);
+            geminiApiKey={geminiApiKey}
+            setGeminiApiKey={(key) => {
+              setGeminiApiKey(key);
+              localStorage.setItem("compiler_gemini_api_key", key);
             }}
             onClose={() => setActiveTab("Dashboard")}
           />
@@ -985,7 +985,7 @@ function MetricsGrid({ output, compileMode, compilationsThisSession }) {
     { label: "Builds this session", value: compilationsThisSession },
     { label: "Latest validation", value: output ? (output.validation?.errors?.length ? `${output.validation.errors.length} issues` : "Passed") : "Not run" },
     { label: "Runtime preview", value: output ? (output.runtime?.ok ? "Ready" : "Needs review") : "Not run" },
-    { label: "Compiler mode", value: compileMode === "nvidia" ? "NVIDIA NIM" : "Local" }
+    { label: "Compiler mode", value: compileMode === "gemini" ? "Google Gemini" : "Local" }
   ];
 
   return (
@@ -1890,7 +1890,7 @@ function SystemAnalytics({ output }) {
 
 /* ================== INTERACTIVE SIMULATION MODALS ================== */
 
-function SettingsModal({ compileMode, setCompileMode, nvidiaApiKey, setNvidiaApiKey, onClose }) {
+function SettingsModal({ compileMode, setCompileMode, geminiApiKey, setGeminiApiKey, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
       <motion.div
@@ -1933,37 +1933,37 @@ function SettingsModal({ compileMode, setCompileMode, nvidiaApiKey, setNvidiaApi
               </button>
               <button
                 type="button"
-                onClick={() => setCompileMode("nvidia")}
+                onClick={() => setCompileMode("gemini")}
                 className={`p-3 border rounded-xl font-bold uppercase tracking-widest transition-all ${
-                  compileMode === "nvidia"
+                  compileMode === "gemini"
                     ? "border-cyan-400 text-cyan-300 bg-cyan-500/5 shadow-glow-cyan"
                     : "border-slate-800 text-slate-400 hover:border-slate-700 hover:text-white"
                 }`}
               >
-                LIVE MODEL (NVIDIA)
+                LIVE MODEL (GEMINI)
               </button>
             </div>
           </div>
 
-          {compileMode === "nvidia" && (
+          {compileMode === "gemini" && (
             <motion.div
               className="space-y-2"
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               transition={{ duration: 0.3 }}
             >
-              <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest">NVIDIA API KEY</span>
+              <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest">GEMINI API KEY</span>
               <div className="relative">
                 <input
                   type="password"
-                  value={nvidiaApiKey}
-                  onChange={(e) => setNvidiaApiKey(e.target.value)}
-                  placeholder="ENTER NVIDIA API CREDENTIAL KEY"
+                  value={geminiApiKey}
+                  onChange={(e) => setGeminiApiKey(e.target.value)}
+                  placeholder="ENTER GEMINI API KEY"
                   className="w-full bg-slate-950 border border-cyan-400/20 rounded-xl px-4 py-3.5 text-white placeholder:text-slate-700 outline-none focus:border-cyan-400 focus:bg-slate-900/60 font-mono text-[10px] uppercase tracking-wider"
                 />
               </div>
               <p className="text-[9px] text-slate-500 leading-relaxed uppercase">
-                The Vercel server key is used when configured. This optional browser key is only used when no server key is available.
+                The Vercel Gemini server key is used when configured. This optional browser key is only used when no server key is available.
               </p>
             </motion.div>
           )}

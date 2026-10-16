@@ -7,9 +7,8 @@ import {
 import { findUserByToken } from "../src/auth-db.js";
 import { bearerToken } from "./auth.js";
 
-const NVIDIA_MODEL = process.env.NVIDIA_MODEL || "meta/llama-3.3-70b-instruct";
-const NVIDIA_URL = process.env.NVIDIA_API_URL || "https://integrate.api.nvidia.com/v1/chat/completions";
-const NVIDIA_TIMEOUT_MS = Number(process.env.NVIDIA_TIMEOUT_MS || 45_000);
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 45_000);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -20,7 +19,7 @@ export default async function handler(req, res) {
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
     const prompt = String(body.prompt || "").trim();
-    const compileMode = String(body.compileMode || "nvidia").toLowerCase();
+    const compileMode = String(body.compileMode || "gemini").toLowerCase();
 
     if (!prompt) {
       return res.status(400).json({ error: "Prompt is required" });
@@ -32,7 +31,7 @@ export default async function handler(req, res) {
     }
 
     const customApiKey =
-      body.nvidiaApiKey || req.headers["x-nvidia-api-key"] || req.headers["X-Nvidia-API-Key"] || "";
+      body.geminiApiKey || req.headers["x-gemini-api-key"] || req.headers["X-Gemini-API-Key"] || "";
 
     const output = await compilePrompt(prompt, customApiKey, compileMode);
     return res.status(200).json(formatResponse(output));
@@ -60,7 +59,7 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
 
   // Prefer the deployment secret so stale browser-local credentials cannot
   // silently override the configured production key.
-  const apiKey = process.env.NVIDIA_API_KEY || customApiKey;
+  const apiKey = process.env.GEMINI_API_KEY || customApiKey;
 
   if (!apiKey) {
     return {
@@ -68,13 +67,13 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
       provider: {
         mode: "local-fallback",
         model: "deterministic",
-        reason: "NVIDIA_API_KEY is not configured on the server."
+        reason: "GEMINI_API_KEY is not configured on the server."
       }
     };
   }
 
   try {
-    const generatedBundle = await requestNvidiaBundle(prompt, deterministic, apiKey);
+    const generatedBundle = await requestGeminiBundle(prompt, deterministic, apiKey);
     const validation = validateSchemas(generatedBundle);
     const repair = repairSchemas(generatedBundle, validation);
     const finalValidation = validateSchemas({
@@ -102,46 +101,43 @@ async function compilePrompt(prompt, customApiKey, compileMode) {
         stageTimings: deterministic.metrics.stageTimings,
         retries: repair.applied.length,
         deterministic: false,
-        costTier: "nvidia-live"
+        costTier: "gemini-live"
       },
       provider: {
-        mode: "nvidia-live",
-        model: NVIDIA_MODEL,
+        mode: "gemini-live",
+        model: GEMINI_MODEL,
         fallbackUsed: false
       }
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "NVIDIA request failed";
+    const message = error instanceof Error ? error.message : "Gemini request failed";
     throw new Error(message.replaceAll(apiKey, "[REDACTED]"));
   }
 }
 
-async function requestNvidiaBundle(prompt, seed, apiKey) {
-  const response = await fetch(NVIDIA_URL, {
+async function requestGeminiBundle(prompt, seed, apiKey) {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      Accept: "application/json"
+      "x-goog-api-key": apiKey
     },
     body: JSON.stringify({
-      model: NVIDIA_MODEL,
-      messages: [{ role: "user", content: buildCompilerPrompt(prompt, seed) }],
-      temperature: 0.1,
-      max_tokens: 8192,
-      stream: false
+      system_instruction: { parts: [{ text: "You are one stage inside a software compiler. Return only valid JSON matching the requested object shape." }] },
+      contents: [{ role: "user", parts: [{ text: buildCompilerPrompt(prompt, seed) }] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 8192, responseMimeType: "application/json" }
     }),
-    signal: AbortSignal.timeout(NVIDIA_TIMEOUT_MS)
+    signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS)
   });
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`NVIDIA ${response.status}: ${detail.slice(0, 240)}`);
+    throw new Error(`Gemini ${response.status}: ${detail.slice(0, 240)}`);
   }
 
   const payload = await response.json();
-  const text = payload.choices?.[0]?.message?.content || "";
-  if (!text.trim()) throw new Error("NVIDIA returned an empty completion.");
+  const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
+  if (!text.trim()) throw new Error("Gemini returned an empty completion.");
   const parsed = parseJson(text);
   return normalizeBundle(parsed, seed);
 }
@@ -195,7 +191,7 @@ function parseJson(text) {
     return JSON.parse(text);
   } catch {
     const match = text.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("NVIDIA did not return JSON.");
+    if (!match) throw new Error("Gemini did not return JSON.");
     return JSON.parse(match[0]);
   }
 }
