@@ -706,7 +706,7 @@ function StatusMessage({ message }) {
 function Dashboard({ user, token, onLogout, initialPrompt = "", onChangeAudience, experienceProfile }) {
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [prompt, setPrompt] = useState(() => initialPrompt || examples[0]);
+  const [prompt, setPrompt] = useState(() => initialPrompt || "");
   const [output, setOutput] = useState(null);
   const [compiling, setCompiling] = useState(false);
   const [compilationProgress, setCompilationProgress] = useState(0);

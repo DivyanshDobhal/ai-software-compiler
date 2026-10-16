@@ -343,7 +343,7 @@ export default function LandingExperience({ user, token, experienceProfile, onPr
     if (!experienceProfile?.audience) void saveProfile({ audience: "exploring", studentStatus: "", studyField: "", experience: "", goal: "" });
   }
 
-  const startBuild = () => onStartBuilding(prompt || suggestedPrompts[0]);
+  const startBuild = () => onStartBuilding(prompt);
   const fillPrompt = (example) => {
     setPrompt(example);
     document.getElementById("home")?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
